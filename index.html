@@ -1,4 +1,4 @@
-
+ 
 <!doctype html>
 <html lang="zh-CN">
 <head>
@@ -131,12 +131,12 @@
             <div class="card">
               <div class="card-h"><div class="title">云端配置 / Cloud Settings</div></div>
               <div class="card-b">
-                <div class="hint" style="margin-bottom:12px">本版本已预写入云端配置，新设备首次打开也可直接使用。 / This build has the cloud configuration prefilled, so new devices can use it directly.</div><div class="small-grid">
+                <div class="hint" style="margin-bottom:12px">本版本已预写入云端配置，打开网页会自动连接云端，不需要先点保存。 / This build has the cloud configuration prefilled. The page connects to the cloud automatically without pressing save.</div><div class="small-grid">
                   <div><label class="muted">Supabase URL</label><input id="supabaseUrlInput" type="text" placeholder="https://xxxx.supabase.co" /></div>
                   <div><label class="muted">Supabase anon key</label><input id="supabaseAnonKeyInput" type="text" placeholder="Paste anon key" /></div>
                 </div>
                 <div class="admin-actions" style="margin-top:12px">
-                  <button class="primary mini-btn" id="saveCloudConfigBtn">保存云端配置 / Save Cloud Settings</button>
+                  <button class="primary mini-btn" id="saveCloudConfigBtn">保存云端配置（可选） / Save Cloud Settings (Optional)</button>
                   <button class="secondary mini-btn" id="testCloudBtn">测试连接 / Test Connection</button>
                 </div>
               </div>
@@ -536,7 +536,9 @@ async function init(){
   const savedPassword=localStorage.getItem(STORAGE_PASSWORD_KEY);
   if(savedPassword) state.adminPassword=savedPassword;
   const localCfg = loadLocalConfig();
-  if(localCfg && (localCfg.supabaseUrl || localCfg.supabaseAnonKey)) state.config = { ...state.config, ...localCfg };
+  if(localCfg && (localCfg.supabaseUrl || localCfg.supabaseAnonKey)) {
+    state.config = { ...state.config, ...localCfg };
+  }
   state.supabase=createClientIfReady();
   els.supabaseUrlInput.value=state.config.supabaseUrl || "";
   els.supabaseAnonKeyInput.value=state.config.supabaseAnonKey || "";
@@ -545,6 +547,7 @@ async function init(){
     await loadAdminPasswordFromCloud().catch(() => {});
     await loadDatasetFromCloud().catch(() => {});
     await loadResultsFromCloud().catch(() => {});
+    showMessage("ok", "已自动连接云端 / Cloud connected automatically");
   }
   els.openLoginBtn.addEventListener("click", () => toggleLogin(true));
   els.closeLoginBtn.addEventListener("click", () => toggleLogin(false));
