@@ -1,4 +1,4 @@
- 
+
 <!doctype html>
 <html lang="zh-CN">
 <head>
@@ -179,7 +179,7 @@
                   <button class="secondary mini-btn" id="refreshResultsBtn">刷新云端结果 / Refresh</button>
                   <button class="secondary mini-btn" id="exportRawBtn">导出原始 CSV / Export Raw</button>
                 </div>
-                <div class="hint" style="margin-top:12px">这个版本先只负责收集数据，不做算法排名。 / This version only collects data for now and does not compute rankings.</div>
+                <div class="hint" style="margin-top:12px">这个版本先只负责收集数据，不做算法排名。后台编辑后请点击“发布到云端”。 / This version only collects data for now and does not compute rankings. After editing in the admin panel, click "Publish to Cloud".</div>
               </div>
             </div>
           </div>
@@ -304,13 +304,14 @@ async function upsertAdminPassword(){ const { error }=await state.supabase.from(
 async function loadDatasetFromCloud(){
   const { data, error }=await state.supabase.from("dataset_items").select("*").order("item_order", { ascending:true });
   if(error) throw error;
-  if(!data || !data.length){ state.dataset=null; return; }
+  if(!data || !data.length){ state.dataset=null; els.rawInput.value=sampleRows.map(r => r.join(",")).join("\\n"); return; }
   const grouped=new Map();
   for(const row of data){
     if(!grouped.has(row.item_id)) grouped.set(row.item_id, { item_id:row.item_id, prompt:row.prompt, candidates:[] });
     grouped.get(row.item_id).candidates.push({ id:row.model_id, label:row.model_id, coding:row.coding });
   }
   state.dataset={ items:Array.from(grouped.values()) };
+  els.rawInput.value=JSON.stringify(state.dataset, null, 2);
 }
 async function loadResultsFromCloud(){
   const { data, error }=await state.supabase.from("responses").select("*").order("created_at", { ascending:true });
@@ -481,6 +482,7 @@ async function publishDataset(){
     const parsed=readDatasetFromEditor();
     await publishDatasetToCloud(parsed);
     state.dataset=parsed;
+    els.rawInput.value=JSON.stringify(parsed, null, 2);
     showMessage("ok", `已发布 / Published ${parsed.items?.length || 0} items`);
     render();
   }catch(err){ showMessage("error", err.message || "发布失败 / Publish failed"); }
