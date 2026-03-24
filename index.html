@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="zh-CN">
 <head>
@@ -130,7 +131,7 @@
             <div class="card">
               <div class="card-h"><div class="title">云端配置 / Cloud Settings</div></div>
               <div class="card-b">
-                <div class="small-grid">
+                <div class="hint" style="margin-bottom:12px">本版本已预写入云端配置，新设备首次打开也可直接使用。 / This build has the cloud configuration prefilled, so new devices can use it directly.</div><div class="small-grid">
                   <div><label class="muted">Supabase URL</label><input id="supabaseUrlInput" type="text" placeholder="https://xxxx.supabase.co" /></div>
                   <div><label class="muted">Supabase anon key</label><input id="supabaseAnonKeyInput" type="text" placeholder="Paste anon key" /></div>
                 </div>
@@ -295,7 +296,7 @@ function parseWorkbook(buffer){ const workbook=XLSX.read(buffer, { type:"array" 
 function buildTasks(data, rater){ const tasks=[]; for(const item of data.items || []){ const randomized=shuffle(item.candidates).map((option, idx) => ({ ...option, displayKey: idx+1 })); tasks.push({ taskId:`${item.item_id}__FULL__${rater}`, item_id:item.item_id, rater, prompt:item.prompt, options:randomized }); } return tasks; }
 function exportCSV(rows){ if(!rows.length) return ""; const headers=Object.keys(rows[0]); const esc=v => { const s=String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; }; return [headers.join(","), ...rows.map(row => headers.map(h => esc(row[h])).join(","))].join("\n"); }
 function downloadText(filename, text){ const blob=new Blob([text], { type:"text/plain;charset=utf-8" }); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url); }
-function loadLocalConfig(){ try{ const raw=localStorage.getItem(STORAGE_CONFIG_KEY); return raw ? JSON.parse(raw) : { supabaseUrl:"", supabaseAnonKey:"" }; } catch { return { supabaseUrl:"", supabaseAnonKey:"" }; } }
+function loadLocalConfig(){ try{ const raw=localStorage.getItem(STORAGE_CONFIG_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; } }
 function createClientIfReady(){ if(!state.config.supabaseUrl || !state.config.supabaseAnonKey) return null; return window.supabase.createClient(state.config.supabaseUrl, state.config.supabaseAnonKey); }
 async function testConnection(){ if(!state.supabase) throw new Error("请先保存 Supabase 配置 / Save Supabase settings first"); const { error }=await state.supabase.from("app_config").select("key").limit(1); if(error) throw error; }
 async function loadAdminPasswordFromCloud(){ const { data, error }=await state.supabase.from("app_config").select("value").eq("key","admin_password").maybeSingle(); if(error) throw error; if(data?.value) state.adminPassword=data.value; }
@@ -534,7 +535,8 @@ function exportRaw(){
 async function init(){
   const savedPassword=localStorage.getItem(STORAGE_PASSWORD_KEY);
   if(savedPassword) state.adminPassword=savedPassword;
-  state.config=loadLocalConfig();
+  const localCfg = loadLocalConfig();
+  if(localCfg && (localCfg.supabaseUrl || localCfg.supabaseAnonKey)) state.config = { ...state.config, ...localCfg };
   state.supabase=createClientIfReady();
   els.supabaseUrlInput.value=state.config.supabaseUrl || "";
   els.supabaseAnonKeyInput.value=state.config.supabaseAnonKey || "";
