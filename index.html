@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LLM 编码比较系统 / LLM Coding Comparison</title>
+  <title>LLM 编码比较系统 / LLM Coding Comparison - v2026-03-24-03</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style>
@@ -84,6 +84,16 @@
       .option-title{font-size:16px}
       .coding{font-size:14px}
     }
+  
+    .version-fixed{
+      position:fixed;right:12px;bottom:12px;z-index:9999;
+      background:rgba(15,23,42,.92);color:#fff;border-radius:999px;
+      padding:8px 12px;font-size:12px;font-weight:700;box-shadow:var(--shadow)
+    }
+    @media (max-width:768px){
+      .version-fixed{right:10px;bottom:10px;font-size:11px;padding:7px 10px}
+    }
+
   </style>
 </head>
 <body>
@@ -179,7 +189,7 @@
                   <button class="secondary mini-btn" id="refreshResultsBtn">刷新云端结果 / Refresh</button>
                   <button class="secondary mini-btn" id="exportRawBtn">导出原始 CSV / Export Raw</button>
                 </div>
-                <div class="hint" style="margin-top:12px">这个版本先只负责收集数据，不做算法排名。后台编辑后请点击“发布到云端”。 / This version only collects data for now and does not compute rankings. After editing in the admin panel, click "Publish to Cloud".</div>
+                <div class="hint" style="margin-top:12px">这个版本先只负责收集数据，不做算法排名。后台编辑后请点击“发布到云端”。本版本已修复 dataset_items 和 responses 的分页读取。 / This version only collects data for now and does not compute rankings. After editing in the admin panel, click "Publish to Cloud". This build fixes paginated loading for both dataset_items and responses.</div>
               </div>
             </div>
           </div>
@@ -302,22 +312,52 @@ async function testConnection(){ if(!state.supabase) throw new Error("请先保�
 async function loadAdminPasswordFromCloud(){ const { data, error }=await state.supabase.from("app_config").select("value").eq("key","admin_password").maybeSingle(); if(error) throw error; if(data?.value) state.adminPassword=data.value; }
 async function upsertAdminPassword(){ const { error }=await state.supabase.from("app_config").upsert({ key:"admin_password", value:state.adminPassword }); if(error) throw error; }
 async function loadDatasetFromCloud(){
-  const { data, error }=await state.supabase.from("dataset_items").select("*").order("item_order", { ascending:true });
-  if(error) throw error;
-  if(!data || !data.length){ state.dataset=null; els.rawInput.value=sampleRows.map(r => r.join(",")).join("\\n"); return; }
+  const pageSize = 1000;
+  let from = 0;
+  let allRows = [];
+  while (true) {
+    const { data, error } = await state.supabase
+      .from("dataset_items")
+      .select("*")
+      .order("item_order", { ascending:true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    allRows = allRows.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  if(!allRows.length){
+    state.dataset=null;
+    if (els.rawInput) els.rawInput.value=sampleRows.map(r => r.join(",")).join("\n");
+    return;
+  }
   const grouped=new Map();
-  for(const row of data){
+  for(const row of allRows){
     if(!grouped.has(row.item_id)) grouped.set(row.item_id, { item_id:row.item_id, prompt:row.prompt, candidates:[] });
     grouped.get(row.item_id).candidates.push({ id:row.model_id, label:row.model_id, coding:row.coding });
   }
   state.dataset={ items:Array.from(grouped.values()) };
-  els.rawInput.value=JSON.stringify(state.dataset, null, 2);
+  if (els.rawInput) els.rawInput.value=JSON.stringify(state.dataset, null, 2);
 }
 async function loadResultsFromCloud(){
-  const { data, error }=await state.supabase.from("responses").select("*").order("created_at", { ascending:true });
-  if(error) throw error;
+  const pageSize = 1000;
+  let from = 0;
+  let allRows = [];
+  while (true) {
+    const { data, error } = await state.supabase
+      .from("responses")
+      .select("*")
+      .order("created_at", { ascending:true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    allRows = allRows.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
   const grouped={ "主试1":[], "主试2":[], "其他人":[] };
-  for(const row of data || []){
+  for(const row of allRows || []){
     if(!grouped[row.rater]) grouped[row.rater]=[];
     grouped[row.rater].push({
       taskId:row.task_id,
@@ -576,5 +616,6 @@ async function init(){
 }
 init();
 </script>
+<div class="version-fixed">版本 / Version v2026-03-24-03</div>
 </body>
 </html>
