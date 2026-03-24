@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LLM 编码比较系统 / LLM Coding Comparison - v2026-03-24-03</title>
+  <title>LLM 编码比较系统 / LLM Coding Comparison - v2026-03-24-04</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style>
@@ -58,13 +58,15 @@
     .global-bar{background:#eef0f3;border:1px solid var(--border);border-radius:16px;padding:12px 14px;margin-top:12px}
     .global-row{display:flex;gap:16px;flex-wrap:wrap}
     .pick{display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.4}
-    .option-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
-    .option{border:1px solid var(--border);border-radius:18px;padding:14px;background:#fff;box-shadow:var(--shadow);display:grid;grid-template-columns:160px minmax(0,1fr) 300px;gap:14px;align-items:start}
-    .option-head{display:flex;flex-direction:column;gap:8px}
-    .option-title{font-weight:800;font-size:17px;line-height:1.25}
-    .anon{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:999px;background:#fff;padding:6px 10px;font-size:12px;color:#334155;width:fit-content}
-    .coding{white-space:pre-wrap;line-height:1.6;color:#334155;font-size:14px;padding-top:2px}
-    .pick-zone{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;border-left:1px solid var(--border);padding-left:14px}
+    .codes-in-prompt{margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:12px}
+    .code-line{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;align-items:start}
+    .code-badge{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:999px;background:#fff;padding:6px 12px;font-size:13px;font-weight:800;color:#0f172a;width:fit-content}
+    .code-text{white-space:pre-wrap;line-height:1.7;color:#334155;font-size:15px}
+    .selector-wrap{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+    .selector-card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:14px;box-shadow:var(--shadow)}
+    .selector-title{font-weight:800;font-size:15px;margin-bottom:10px}
+    .selector-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+    .letter-pick{display:flex;align-items:center;gap:8px;font-size:14px;line-height:1.4;border:1px solid var(--border);border-radius:14px;padding:10px 12px;background:var(--card)}
     table{width:100%;border-collapse:collapse;font-size:14px}
     th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}
     thead tr{background:var(--soft)}
@@ -80,9 +82,9 @@
       .home-head,.card-h,.home-body,.card-b{padding:16px}
       button{font-size:14px;padding:10px 14px}
       .prompt{font-size:15px}
-      .pick-zone{grid-template-columns:1fr}
-      .option-title{font-size:16px}
-      .coding{font-size:14px}
+      .selector-wrap,.selector-options{grid-template-columns:1fr}
+      .code-line{grid-template-columns:1fr}
+      .code-text{font-size:14px}
     }
   
     .version-fixed{
@@ -220,6 +222,8 @@
 const DEFAULT_PASSWORD = "admin123";
 const STORAGE_PASSWORD_KEY = "llm_admin_password_cloud_flat8x1_v1";
 const STORAGE_CONFIG_KEY = "llm_supabase_config_flat8x1_v1";
+const SENTINEL_ALL_INACCURATE = "__ALL_INACCURATE__";
+const SENTINEL_ALL_NOT_NOVEL = "__ALL_NOT_NOVEL__";
 
 const sampleRows = [
   ["content", "Deepseek", "Doubao", "ChatGPT", "Gemini", "Claude", "Qwen", "Llama", "Zhipu"],
@@ -303,7 +307,7 @@ function parseWideRows(rows){
 }
 function parseCSV(text){ const lines=text.trim().split(/\r?\n/).filter(Boolean); if(!lines.length) throw new Error("CSV 为空 / Empty CSV"); return parseWideRows(lines.map(splitCSVLine)); }
 function parseWorkbook(buffer){ const workbook=XLSX.read(buffer, { type:"array" }); const firstSheet=workbook.SheetNames[0]; if(!firstSheet) throw new Error("没有读取到工作表 / No worksheet found"); const worksheet=workbook.Sheets[firstSheet]; const rows=XLSX.utils.sheet_to_json(worksheet, { header:1, defval:"" }); return parseWideRows(rows); }
-function buildTasks(data, rater){ const tasks=[]; for(const item of data.items || []){ const randomized=shuffle(item.candidates).map((option, idx) => ({ ...option, displayKey: idx+1 })); tasks.push({ taskId:`${item.item_id}__FULL__${rater}`, item_id:item.item_id, rater, prompt:item.prompt, options:randomized }); } return tasks; }
+function buildTasks(data, rater){ const tasks=[]; const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''); for(const item of data.items || []){ const randomized=shuffle(item.candidates).map((option, idx) => ({ ...option, displayKey: alphabet[idx] || String(idx+1) })); tasks.push({ taskId:`${item.item_id}__FULL__${rater}`, item_id:item.item_id, rater, prompt:item.prompt, options:randomized }); } return tasks; }
 function exportCSV(rows){ if(!rows.length) return ""; const headers=Object.keys(rows[0]); const esc=v => { const s=String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; }; return [headers.join(","), ...rows.map(row => headers.map(h => esc(row[h])).join(","))].join("\n"); }
 function downloadText(filename, text){ const blob=new Blob([text], { type:"text/plain;charset=utf-8" }); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url); }
 function loadLocalConfig(){ try{ const raw=localStorage.getItem(STORAGE_CONFIG_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; } }
@@ -340,6 +344,43 @@ async function loadDatasetFromCloud(){
   state.dataset={ items:Array.from(grouped.values()) };
   if (els.rawInput) els.rawInput.value=JSON.stringify(state.dataset, null, 2);
 }
+function encodeResponseTokens(row){
+  const tokens=[];
+  const optionIds=Array.isArray(row.optionIds) ? row.optionIds : [];
+  for(const id of optionIds){ tokens.push(`OPT:${id}`); }
+  if(row.all_inaccurate===true){
+    tokens.push('ACC_ALL:true');
+  }else if(row.all_inaccurate===false){
+    tokens.push('ACC_ALL:false');
+    if(row.most_accurate) tokens.push(`ACC_MOST:${row.most_accurate}`);
+    if(row.least_accurate) tokens.push(`ACC_LEAST:${row.least_accurate}`);
+  }
+  if(row.all_not_novel===true){
+    tokens.push('NOV_ALL:true');
+  }else if(row.all_not_novel===false){
+    tokens.push('NOV_ALL:false');
+    if(row.most_novel) tokens.push(`NOV_MOST:${row.most_novel}`);
+    if(row.least_novel) tokens.push(`NOV_LEAST:${row.least_novel}`);
+  }
+  return tokens;
+}
+function decodeResponseTokens(optionIds){
+  const tokens=Array.isArray(optionIds) ? optionIds : [];
+  const pick=(prefix)=>{
+    const hit=tokens.find(x => typeof x === 'string' && x.startsWith(prefix));
+    return hit ? hit.slice(prefix.length) : null;
+  };
+  const has=(value)=>tokens.includes(value);
+  return {
+    optionIds: tokens.filter(x => typeof x === 'string' && x.startsWith('OPT:')).map(x => x.slice(4)),
+    all_inaccurate: has('ACC_ALL:true') ? true : (has('ACC_ALL:false') ? false : null),
+    most_accurate: pick('ACC_MOST:'),
+    least_accurate: pick('ACC_LEAST:'),
+    all_not_novel: has('NOV_ALL:true') ? true : (has('NOV_ALL:false') ? false : null),
+    most_novel: pick('NOV_MOST:'),
+    least_novel: pick('NOV_LEAST:')
+  };
+}
 async function loadResultsFromCloud(){
   const pageSize = 1000;
   let from = 0;
@@ -359,17 +400,28 @@ async function loadResultsFromCloud(){
   const grouped={ "主试1":[], "主试2":[], "其他人":[] };
   for(const row of allRows || []){
     if(!grouped[row.rater]) grouped[row.rater]=[];
+    const decoded = decodeResponseTokens(row.option_ids || []);
+    const inferredAllInaccurate = decoded.all_inaccurate !== null
+      ? decoded.all_inaccurate
+      : (row.all_inaccurate === null || row.all_inaccurate === undefined
+          ? (row.most_accurate_model_id === SENTINEL_ALL_INACCURATE && row.least_accurate_model_id === SENTINEL_ALL_INACCURATE ? true : null)
+          : !!row.all_inaccurate);
+    const inferredAllNotNovel = decoded.all_not_novel !== null
+      ? decoded.all_not_novel
+      : (row.all_not_novel === null || row.all_not_novel === undefined
+          ? (row.most_novel_model_id === SENTINEL_ALL_NOT_NOVEL && row.least_novel_model_id === SENTINEL_ALL_NOT_NOVEL ? true : null)
+          : !!row.all_not_novel);
     grouped[row.rater].push({
       taskId:row.task_id,
       item_id:row.item_id,
       rater:row.rater,
-      most_accurate:row.most_accurate_model_id,
-      most_novel:row.most_novel_model_id,
-      least_accurate:row.least_accurate_model_id,
-      least_novel:row.least_novel_model_id,
-      all_inaccurate:!!row.all_inaccurate,
-      all_not_novel:!!row.all_not_novel,
-      optionIds:row.option_ids || [],
+      most_accurate:decoded.most_accurate || (row.most_accurate_model_id === SENTINEL_ALL_INACCURATE ? null : row.most_accurate_model_id),
+      most_novel:decoded.most_novel || (row.most_novel_model_id === SENTINEL_ALL_NOT_NOVEL ? null : row.most_novel_model_id),
+      least_accurate:decoded.least_accurate || (row.least_accurate_model_id === SENTINEL_ALL_INACCURATE ? null : row.least_accurate_model_id),
+      least_novel:decoded.least_novel || (row.least_novel_model_id === SENTINEL_ALL_NOT_NOVEL ? null : row.least_novel_model_id),
+      all_inaccurate: inferredAllInaccurate,
+      all_not_novel: inferredAllNotNovel,
+      optionIds:decoded.optionIds.length ? decoded.optionIds : (row.option_ids || []),
       created_at:row.created_at
     });
   }
@@ -390,18 +442,13 @@ async function publishDatasetToCloud(parsed){
 async function clearResponsesCloud(){ const { error }=await state.supabase.from("responses").delete().neq("id",0); if(error) throw error; }
 async function clearDatasetCloud(){ const { error }=await state.supabase.from("dataset_items").delete().neq("item_id",""); if(error) throw error; }
 async function submitResponseCloud(row){
-  const { error }=await state.supabase.from("responses").insert({
+  const payload={
     task_id:row.taskId,
     item_id:row.item_id,
     rater:row.rater,
-    most_accurate_model_id:row.most_accurate,
-    most_novel_model_id:row.most_novel,
-    least_accurate_model_id:row.least_accurate,
-    least_novel_model_id:row.least_novel,
-    all_inaccurate:row.all_inaccurate,
-    all_not_novel:row.all_not_novel,
-    option_ids:row.optionIds
-  });
+    option_ids:encodeResponseTokens(row)
+  };
+  const { error }=await state.supabase.from("responses").insert(payload);
   if(error) throw error;
 }
 function setPage(page){ state.page=page; els.pageHome.classList.toggle("hidden", page !== "home"); els.pageAdmin.classList.toggle("hidden", page !== "admin"); els.pageRater.classList.toggle("hidden", page !== "rater"); render(); }
@@ -416,7 +463,10 @@ function renderAdmin(){
   els.otherCount.textContent=`其他人 / Others: ${(state.resultsByRater["其他人"] || []).length} 条记录 / records（不计入统计 / not counted）`;
 }
 function updateAnswer(taskId, field, value){ state.answers[taskId] = { ...(state.answers[taskId] || {}), [field]: value }; }
-function isTaskComplete(taskId){ const a=state.answers[taskId] || {}; return (!!a.most_accurate || !!a.all_inaccurate) && (!!a.most_novel || !!a.all_not_novel) && !!a.least_accurate && !!a.least_novel; }
+function getTaskPhase(taskId){ return (state.answers[taskId] || {}).phase || 'accuracy'; }
+function isAccuracyStepComplete(taskId){ const a=state.answers[taskId] || {}; return a.all_inaccurate===true ? true : (a.all_inaccurate===false && !!a.most_accurate && !!a.least_accurate); }
+function isNoveltyStepComplete(taskId){ const a=state.answers[taskId] || {}; return a.all_not_novel===true ? true : (a.all_not_novel===false && !!a.most_novel && !!a.least_novel); }
+function isTaskComplete(taskId){ return isAccuracyStepComplete(taskId) && isNoveltyStepComplete(taskId); }
 function renderRater(){
   const currentTask=state.tasks[state.index] || null;
   const raterCompleted=(state.resultsByRater[state.selectedRater] || []).length;
@@ -429,54 +479,137 @@ function renderRater(){
   els.progressBadge.textContent=`当前进度 / Progress ${progress}%`;
   if(!currentTask){ els.taskArea.innerHTML=`<div class="hint">当前任务已经完成 / Current task set is complete.</div>`; return; }
   const a=state.answers[currentTask.taskId] || {};
+  const phase=getTaskPhase(currentTask.taskId);
+  const isAccuracyPhase=phase==='accuracy';
+  const stepTitle=isAccuracyPhase ? '第一步：准确性 / Step 1: Accuracy' : '第二步：新奇性 / Step 2: Novelty';
+  const stepHint=isAccuracyPhase ? '先判断是否都不准确；如果选择“是”，可直接进入下一步；如果选择“否”，再选择最准确和最不准确。' : '再判断是否都不新奇；如果选择“是”，可直接进入下一题；如果选择“否”，再选择最新奇和最不新奇。';
   els.taskArea.innerHTML=`
     <div class="task-meta">
       <span class="badge">材料 / Item ${currentTask.item_id}</span>
-      <span class="badge">${currentTask.options.length} 选 1 / choose 1</span>
-      <span class="badge">扁平 8×1 / Flat 8×1</span>
+      <span class="badge">${currentTask.options.length} 个匿名编码 / anonymous codes</span>
+      <span class="badge">当前步骤 / ${stepTitle}</span>
     </div>
-    <div class="prompt">${currentTask.prompt}</div>
-    <div class="global-bar">
-      <div class="global-row">
-        <label class="pick"><input type="checkbox" id="allInaccurateBox" ${a.all_inaccurate ? "checked" : ""}> 都不准确 / All are inaccurate</label>
-        <label class="pick"><input type="checkbox" id="allNotNovelBox" ${a.all_not_novel ? "checked" : ""}> 都不新奇 / All are not novel</label>
+    <div class="prompt">${currentTask.prompt}
+      <div class="codes-in-prompt">
+        ${currentTask.options.map(option => `
+          <div class="code-line">
+            <div class="code-badge">${option.displayKey}</div>
+            <div class="code-text">${option.coding}</div>
+          </div>
+        `).join('')}
       </div>
     </div>
-    <div class="option-list">
-      ${currentTask.options.map(option => `
-        <div class="option">
-          <div class="option-head">
-            <div class="option-title">选项 / Option ${option.displayKey}</div>
-            <div class="anon">匿名候选 / Anonymous</div>
+    <div class="global-bar">
+      <div style="font-weight:800;margin-bottom:8px">${stepTitle}</div>
+      <div class="hint" style="margin-bottom:12px">${stepHint}</div>
+      ${isAccuracyPhase ? `
+        <div>
+          <div style="font-weight:700;margin-bottom:10px">你是否觉得都不准确？ / Do you think all are inaccurate?</div>
+          <div class="global-row">
+            <label class="pick"><input type="radio" name="${currentTask.taskId}_accuracy_gate" value="yes" ${a.all_inaccurate ? 'checked' : ''}> 是 / Yes</label>
+            <label class="pick"><input type="radio" name="${currentTask.taskId}_accuracy_gate" value="no" ${a.all_inaccurate===false ? 'checked' : ''}> 否 / No</label>
           </div>
-          <div class="coding">${option.coding}</div>
-          <div class="pick-zone">
-            <label class="pick"><input type="radio" name="${currentTask.taskId}_most_accurate" value="${option.id}" ${a.most_accurate === option.id ? "checked" : ""}> 最准确 / Most Accurate</label>
-            <label class="pick"><input type="radio" name="${currentTask.taskId}_most_novel" value="${option.id}" ${a.most_novel === option.id ? "checked" : ""}> 最新奇 / Most Novel</label>
-            <label class="pick"><input type="radio" name="${currentTask.taskId}_least_accurate" value="${option.id}" ${a.least_accurate === option.id ? "checked" : ""}> 最不准确 / Least Accurate</label>
-            <label class="pick"><input type="radio" name="${currentTask.taskId}_least_novel" value="${option.id}" ${a.least_novel === option.id ? "checked" : ""}> 最不新奇 / Least Novel</label>
+        </div>` : `
+        <div>
+          <div style="font-weight:700;margin-bottom:10px">你是否觉得都不新奇？ / Do you think all are not novel?</div>
+          <div class="global-row">
+            <label class="pick"><input type="radio" name="${currentTask.taskId}_novelty_gate" value="yes" ${a.all_not_novel ? 'checked' : ''}> 是 / Yes</label>
+            <label class="pick"><input type="radio" name="${currentTask.taskId}_novelty_gate" value="no" ${a.all_not_novel===false ? 'checked' : ''}> 否 / No</label>
           </div>
-        </div>
-      `).join("")}
+        </div>`}
+    </div>
+    <div class="selector-wrap">
+      ${isAccuracyPhase ? `
+        ${(a.all_inaccurate===false) ? `
+          <div class="selector-card">
+            <div class="selector-title">你觉得最准确的是 / Most Accurate</div>
+            <div class="selector-options">
+              ${currentTask.options.map(option => `
+                <label class="letter-pick"><input type="radio" name="${currentTask.taskId}_most_accurate" value="${option.id}" ${a.most_accurate === option.id ? 'checked' : ''}> ${option.displayKey}</label>
+              `).join('')}
+            </div>
+          </div>
+          <div class="selector-card">
+            <div class="selector-title">你觉得最不准确的是 / Least Accurate</div>
+            <div class="selector-options">
+              ${currentTask.options.map(option => `
+                <label class="letter-pick"><input type="radio" name="${currentTask.taskId}_least_accurate" value="${option.id}" ${a.least_accurate === option.id ? 'checked' : ''}> ${option.displayKey}</label>
+              `).join('')}
+            </div>
+          </div>
+        ` : `<div class="hint" style="grid-column:1 / -1">选择“否”后，下面直接按字母选择“最准确 / 最不准确”。</div>`}
+      ` : `
+        ${(a.all_not_novel===false) ? `
+          <div class="selector-card">
+            <div class="selector-title">你觉得最新奇的是 / Most Novel</div>
+            <div class="selector-options">
+              ${currentTask.options.map(option => `
+                <label class="letter-pick"><input type="radio" name="${currentTask.taskId}_most_novel" value="${option.id}" ${a.most_novel === option.id ? 'checked' : ''}> ${option.displayKey}</label>
+              `).join('')}
+            </div>
+          </div>
+          <div class="selector-card">
+            <div class="selector-title">你觉得最不新奇的是 / Least Novel</div>
+            <div class="selector-options">
+              ${currentTask.options.map(option => `
+                <label class="letter-pick"><input type="radio" name="${currentTask.taskId}_least_novel" value="${option.id}" ${a.least_novel === option.id ? 'checked' : ''}> ${option.displayKey}</label>
+              `).join('')}
+            </div>
+          </div>
+        ` : `<div class="hint" style="grid-column:1 / -1">选择“否”后，下面直接按字母选择“最新奇 / 最不新奇”。</div>`}
+      `}
     </div>
     <div class="btns" style="margin-top:16px">
-      <button class="primary mini-btn" id="submitTaskBtn" ${isTaskComplete(currentTask.taskId) ? "" : "disabled"}>提交本题并进入下一题 / Submit & Next</button>
-      <button class="secondary mini-btn" id="prevTaskBtn" ${state.index===0 ? "disabled" : ""}>上一题 / Previous</button>
+      <button class="primary mini-btn" id="submitTaskBtn" ${(isAccuracyPhase ? isAccuracyStepComplete(currentTask.taskId) : isNoveltyStepComplete(currentTask.taskId)) ? '' : 'disabled'}>${isAccuracyPhase ? '进入下一步 / Next Step' : '提交本题并进入下一题 / Submit & Next'}</button>
+      <button class="secondary mini-btn" id="prevTaskBtn" ${state.index===0 && isAccuracyPhase ? 'disabled' : ''}>${isAccuracyPhase ? '上一题 / Previous' : '返回上一步 / Back Step'}</button>
     </div>`;
-  document.getElementById("allInaccurateBox").addEventListener("change", (e) => { updateAnswer(currentTask.taskId, "all_inaccurate", e.target.checked); if(e.target.checked) updateAnswer(currentTask.taskId, "most_accurate", null); renderRater(); });
-  document.getElementById("allNotNovelBox").addEventListener("change", (e) => { updateAnswer(currentTask.taskId, "all_not_novel", e.target.checked); if(e.target.checked) updateAnswer(currentTask.taskId, "most_novel", null); renderRater(); });
-  ["most_accurate","most_novel","least_accurate","least_novel"].forEach(field => {
-    document.querySelectorAll(`input[name="${currentTask.taskId}_${field}"]`).forEach(el => {
-      el.addEventListener("change", (e) => {
-        updateAnswer(currentTask.taskId, field, e.target.value);
-        if(field==="most_accurate") updateAnswer(currentTask.taskId, "all_inaccurate", false);
-        if(field==="most_novel") updateAnswer(currentTask.taskId, "all_not_novel", false);
+
+  if(isAccuracyPhase){
+    document.querySelectorAll(`input[name="${currentTask.taskId}_accuracy_gate"]`).forEach(el => {
+      el.addEventListener('change', (e) => {
+        const isAll=e.target.value==='yes';
+        updateAnswer(currentTask.taskId, 'all_inaccurate', isAll);
+        if(isAll){ updateAnswer(currentTask.taskId, 'most_accurate', null); updateAnswer(currentTask.taskId, 'least_accurate', null); }
         renderRater();
       });
     });
+    ['most_accurate','least_accurate'].forEach(field => {
+      document.querySelectorAll(`input[name="${currentTask.taskId}_${field}"]`).forEach(el => {
+        el.addEventListener('change', (e) => {
+          updateAnswer(currentTask.taskId, field, e.target.value);
+          if(field==='most_accurate') updateAnswer(currentTask.taskId, 'all_inaccurate', false);
+          renderRater();
+        });
+      });
+    });
+  } else {
+    document.querySelectorAll(`input[name="${currentTask.taskId}_novelty_gate"]`).forEach(el => {
+      el.addEventListener('change', (e) => {
+        const isAll=e.target.value==='yes';
+        updateAnswer(currentTask.taskId, 'all_not_novel', isAll);
+        if(isAll){ updateAnswer(currentTask.taskId, 'most_novel', null); updateAnswer(currentTask.taskId, 'least_novel', null); }
+        renderRater();
+      });
+    });
+    ['most_novel','least_novel'].forEach(field => {
+      document.querySelectorAll(`input[name="${currentTask.taskId}_${field}"]`).forEach(el => {
+        el.addEventListener('change', (e) => {
+          updateAnswer(currentTask.taskId, field, e.target.value);
+          if(field==='most_novel') updateAnswer(currentTask.taskId, 'all_not_novel', false);
+          renderRater();
+        });
+      });
+    });
+  }
+  document.getElementById('submitTaskBtn').addEventListener('click', submitTask);
+  document.getElementById('prevTaskBtn').addEventListener('click', () => {
+    if(!isAccuracyPhase){
+      updateAnswer(currentTask.taskId, 'phase', 'accuracy');
+      renderRater();
+      return;
+    }
+    if(state.index>0){ state.index -= 1; renderRater(); }
   });
-  document.getElementById("submitTaskBtn").addEventListener("click", submitTask);
-  document.getElementById("prevTaskBtn").addEventListener("click", () => { if(state.index>0){ state.index -= 1; renderRater(); } });
 }
 function render(){ renderHomeStatus(); if(state.page==="admin") renderAdmin(); if(state.page==="rater") renderRater(); }
 function enterAdmin(){ showMessage(); if(els.adminPasswordInput.value===state.adminPassword){ toggleLogin(false); setPage("admin"); showMessage("ok", "已进入后台 / Entered admin panel"); } else showMessage("error", "密码不正确 / Incorrect password"); }
@@ -545,7 +678,15 @@ function startRater(rater){
 }
 async function submitTask(){
   const currentTask=state.tasks[state.index];
-  if(!currentTask || !state.selectedRater || !isTaskComplete(currentTask.taskId)) return;
+  if(!currentTask || !state.selectedRater) return;
+  const phase=getTaskPhase(currentTask.taskId);
+  if(phase==='accuracy'){
+    if(!isAccuracyStepComplete(currentTask.taskId)) return;
+    updateAnswer(currentTask.taskId, 'phase', 'novelty');
+    renderRater();
+    return;
+  }
+  if(!isTaskComplete(currentTask.taskId)) return;
   try{
     const a=state.answers[currentTask.taskId] || {};
     const row={
@@ -556,8 +697,8 @@ async function submitTask(){
       most_novel:a.most_novel || null,
       least_accurate:a.least_accurate || null,
       least_novel:a.least_novel || null,
-      all_inaccurate:!!a.all_inaccurate,
-      all_not_novel:!!a.all_not_novel,
+      all_inaccurate:a.all_inaccurate === undefined ? null : a.all_inaccurate,
+      all_not_novel:a.all_not_novel === undefined ? null : a.all_not_novel,
       optionIds:currentTask.options.map(x => x.id)
     };
     if(!state.supabase) throw new Error("云端未配置 / Cloud not configured");
@@ -616,6 +757,6 @@ async function init(){
 }
 init();
 </script>
-<div class="version-fixed">版本 / Version v2026-03-24-03</div>
+<div class="version-fixed">版本 / Version v2026-03-24-04</div>
 </body>
 </html>
