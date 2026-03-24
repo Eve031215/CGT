@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM 编码比较系统 / LLM Coding Comparison</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    :root{
+      --bg:#f3f4f6;--card:#f7f7f8;--surface:#fff;--border:#d8dee8;--text:#0f172a;
+      --muted:#475569;--primary:#0f1b3d;--soft:#eef2f7;--okbg:#ecfdf5;--ok:#047857;
+      --errbg:#fff1f2;--err:#be123c;--shadow:0 2px 10px rgba(15,23,42,.06)
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text)}
+    .wrap{max-width:1180px;margin:0 auto;padding:16px}
+    .topbar{display:flex;justify-content:flex-end;align-items:center;margin-bottom:12px}
+    .icon-btn{width:44px;height:44px;border-radius:14px;border:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow)}
+    .home-shell{min-height:calc(100vh - 88px);display:flex;align-items:center;justify-content:center}
+    .home-card,.card{background:var(--card);border:1px solid #cfd6e2;border-radius:28px;box-shadow:var(--shadow)}
+    .home-card{width:min(100%,980px)}
+    .home-head,.card-h{padding:20px 22px;border-bottom:1px solid #d8dee8;display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .home-title.big{font-size:28px;font-weight:800}
+    .title{font-size:18px;font-weight:700}
+    .home-body,.card-b{padding:20px}
+    .btns,.admin-actions{display:flex;gap:12px;flex-wrap:wrap}
+    button,.file-label{border:none;border-radius:14px;padding:11px 16px;font-size:15px;font-weight:800;cursor:pointer}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    .primary{background:var(--primary);color:#fff}
+    .secondary{background:#fff;border:2px solid #cfd6e2;color:var(--text)}
+    .danger{background:#fff;border:1px solid #fecdd3;color:#be123c}
+    .mini-btn{font-size:13px !important;padding:8px 12px !important;border-radius:12px !important;font-weight:700 !important}
+    .status-pill,.hint{background:#eef0f3;border-radius:16px;padding:12px 14px;color:#334155;line-height:1.55}
+    .status-pill{font-size:15px}
+    .hint{font-size:14px}
+    .message{margin:0 0 14px 0;padding:12px 14px;border-radius:14px;font-size:14px}
+    .message.ok{background:var(--okbg);color:var(--ok)}
+    .message.err{background:var(--errbg);color:var(--err)}
+    .hidden{display:none !important}
+    .overlay{position:fixed;inset:0;background:rgba(15,23,42,.28);display:flex;align-items:center;justify-content:center;padding:20px;z-index:1000}
+    .modal{width:min(520px,100%);background:#fff;border-radius:24px;border:1px solid var(--border);box-shadow:0 20px 50px rgba(15,23,42,.18);overflow:hidden}
+    .modal-h{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+    .modal-b{padding:20px}
+    .close-btn{width:36px;height:36px;border-radius:12px;border:1px solid var(--border);background:#fff;font-size:18px;padding:0}
+    input[type=password],input[type=text],textarea{width:100%;border:1px solid var(--border);border-radius:14px;padding:12px;font-size:14px;background:#fff}
+    textarea{min-height:260px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    input[type=file]{display:none}
+    .file-label{display:inline-flex;align-items:center;border:1px solid var(--border);background:#fff;padding:10px 14px;border-radius:14px;font-size:14px;font-weight:600}
+    .grid-admin{display:grid;grid-template-columns:1.15fr 1fr;gap:18px}
+    .col{display:flex;flex-direction:column;gap:18px}
+    .small-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .badge{font-size:12px;border:1px solid var(--border);padding:5px 9px;border-radius:999px;background:#fff;display:inline-flex;align-items:center}
+    .task-wrap{max-width:1180px;margin:0 auto}
+    .task-meta{display:flex;gap:8px;flex-wrap:wrap;color:#64748b;font-size:12px;margin-bottom:12px}
+    .prompt{background:var(--soft);border:1px solid var(--border);padding:14px 16px;border-radius:16px;white-space:pre-wrap;line-height:1.75;font-size:16px}
+    .global-bar{background:#eef0f3;border:1px solid var(--border);border-radius:16px;padding:12px 14px;margin-top:12px}
+    .global-row{display:flex;gap:16px;flex-wrap:wrap}
+    .pick{display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.4}
+    .option-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+    .option{border:1px solid var(--border);border-radius:18px;padding:14px;background:#fff;box-shadow:var(--shadow);display:grid;grid-template-columns:160px minmax(0,1fr) 300px;gap:14px;align-items:start}
+    .option-head{display:flex;flex-direction:column;gap:8px}
+    .option-title{font-weight:800;font-size:17px;line-height:1.25}
+    .anon{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:999px;background:#fff;padding:6px 10px;font-size:12px;color:#334155;width:fit-content}
+    .coding{white-space:pre-wrap;line-height:1.6;color:#334155;font-size:14px;padding-top:2px}
+    .pick-zone{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;border-left:1px solid var(--border);padding-left:14px}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}
+    thead tr{background:var(--soft)}
+    .muted{color:#64748b}
+    @media (max-width:980px){
+      .grid-admin,.small-grid{grid-template-columns:1fr}
+      .option{grid-template-columns:1fr;gap:12px}
+      .pick-zone{border-left:none;border-top:1px solid var(--border);padding-left:0;padding-top:12px}
+    }
+    @media (max-width:768px){
+      .wrap{padding:12px}
+      .home-title.big{font-size:24px}
+      .home-head,.card-h,.home-body,.card-b{padding:16px}
+      button{font-size:14px;padding:10px 14px}
+      .prompt{font-size:15px}
+      .pick-zone{grid-template-columns:1fr}
+      .option-title{font-size:16px}
+      .coding{font-size:14px}
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <button class="icon-btn" id="openLoginBtn" title="管理员入口 / Admin">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06A2 2 0 1 1 4.37 17l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3.2a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82L4.4 7.24A2 2 0 1 1 7.24 4.4l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3.2a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06A2 2 0 1 1 19.6 7.24l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1h.09a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+    </button>
+  </div>
+
+  <div id="messageBox" class="message hidden"></div>
+
+  <div id="page-home">
+    <div class="home-shell">
+      <div class="home-card">
+        <div class="home-head"><div class="home-title big">进入前台（主试选择） / Enter Frontend</div></div>
+        <div class="home-body">
+          <div class="btns">
+            <button class="primary" id="startRater1Btn">我是主试1 / Rater 1</button>
+            <button class="secondary" id="startRater2Btn">我是主试2 / Rater 2</button>
+            <button class="secondary" id="startOtherBtn">其他人 / Others</button>
+          </div>
+          <div id="homeDatasetStatus" class="status-pill" style="margin-top:18px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="adminLoginOverlay" class="overlay hidden">
+    <div class="modal">
+      <div class="modal-h"><div style="font-size:18px;font-weight:700">管理员登录 / Admin Login</div><button class="close-btn" id="closeLoginBtn">×</button></div>
+      <div class="modal-b">
+        <input id="adminPasswordInput" type="password" placeholder="输入管理员密码 / Enter admin password" />
+        <div class="btns" style="margin-top:14px"><button class="primary mini-btn" id="enterAdminBtn">进入后台 / Enter Admin</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="page-admin" class="hidden">
+    <div class="card">
+      <div class="card-h"><div class="title">后台管理 / Admin Panel</div><button class="secondary mini-btn" id="backHomeFromAdminBtn">返回首页 / Back Home</button></div>
+      <div class="card-b">
+        <div class="grid-admin">
+          <div class="col">
+            <div class="card">
+              <div class="card-h"><div class="title">云端配置 / Cloud Settings</div></div>
+              <div class="card-b">
+                <div class="small-grid">
+                  <div><label class="muted">Supabase URL</label><input id="supabaseUrlInput" type="text" placeholder="https://xxxx.supabase.co" /></div>
+                  <div><label class="muted">Supabase anon key</label><input id="supabaseAnonKeyInput" type="text" placeholder="Paste anon key" /></div>
+                </div>
+                <div class="admin-actions" style="margin-top:12px">
+                  <button class="primary mini-btn" id="saveCloudConfigBtn">保存云端配置 / Save Cloud Settings</button>
+                  <button class="secondary mini-btn" id="testCloudBtn">测试连接 / Test Connection</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><div class="title">上传和发布数据集 / Upload Dataset</div><label class="file-label">上传文件 / Upload<input id="fileInput" type="file" accept=".json,.csv,.txt,.xlsx,.xls" /></label></div>
+              <div class="card-b">
+                <div class="hint">第一列为内容，后面每列为一个 LLM。正式版会按扁平 8×1 纵向布局展示。 / First column is content, each following column is one LLM. The formal version uses a flat vertical 8×1 layout.</div>
+                <textarea id="rawInput"></textarea>
+                <div class="admin-actions" style="margin-top:12px">
+                  <button class="secondary mini-btn" id="loadSampleBtn">载入示例 / Load Sample</button>
+                  <button class="primary mini-btn" id="publishDatasetBtn">发布到云端 / Publish to Cloud</button>
+                  <button class="danger mini-btn" id="clearRemoteDatasetBtn">清空云端材料 / Clear Cloud Dataset</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col">
+            <div class="card">
+              <div class="card-h"><div class="title">状态 / Status</div></div>
+              <div class="card-b">
+                <div id="datasetCount" class="hint"></div>
+                <div id="rater1Count" class="hint" style="margin-top:10px"></div>
+                <div id="rater2Count" class="hint" style="margin-top:10px"></div>
+                <div id="otherCount" class="hint" style="margin-top:10px"></div>
+                <div style="margin-top:12px"><input id="newPasswordInput" type="password" placeholder="输入新后台密码 / New admin password" /></div>
+                <div class="admin-actions" style="margin-top:12px">
+                  <button class="secondary mini-btn" id="savePasswordBtn">更新后台密码 / Update Password</button>
+                  <button class="danger mini-btn" id="clearCurrentAnswersBtn">清空当前作答 / Clear Responses</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><div class="title">数据导出 / Export</div></div>
+              <div class="card-b">
+                <div class="admin-actions">
+                  <button class="secondary mini-btn" id="refreshResultsBtn">刷新云端结果 / Refresh</button>
+                  <button class="secondary mini-btn" id="exportRawBtn">导出原始 CSV / Export Raw</button>
+                </div>
+                <div class="hint" style="margin-top:12px">这个版本先只负责收集数据，不做算法排名。 / This version only collects data for now and does not compute rankings.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="page-rater" class="hidden">
+    <div class="task-wrap">
+      <div class="card">
+        <div class="card-h"><div class="title" id="raterPageTitle">作答页面 / Response Page</div><button class="secondary mini-btn" id="backHomeFromRaterBtn">返回首页 / Back Home</button></div>
+        <div class="card-b">
+          <div class="task-meta">
+            <span class="badge" id="selectedRaterBadge"></span>
+            <span class="badge" id="remainingBadge"></span>
+            <span class="badge" id="completedBadge"></span>
+            <span class="badge" id="progressBadge"></span>
+          </div>
+          <div id="taskArea"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DEFAULT_PASSWORD = "admin123";
+const STORAGE_PASSWORD_KEY = "llm_admin_password_cloud_flat8x1_v1";
+const STORAGE_CONFIG_KEY = "llm_supabase_config_flat8x1_v1";
+
+const sampleRows = [
+  ["content", "Deepseek", "Doubao", "ChatGPT", "Gemini", "Claude", "Qwen", "Llama", "Zhipu"],
+  ["伊尔迷最爱的人是谁", "向 AI 询问特定角色的情感归属并寻求关系解读或配对判断", "询问动漫角色情感倾向", "以八卦猎奇口吻询问特定作品中人物亲密关系的缘由并带玩梗调戏意味", "询问角色关系中的核心情感投射对象", "围绕角色依恋对象进行解释性提问", "询问作品人物的情感中心", "用粉丝视角追问角色偏爱对象", "探究人物关系中的核心偏好指向"]
+];
+
+const state = {
+  page:"home",
+  adminPassword:DEFAULT_PASSWORD,
+  config:{ supabaseUrl:"", supabaseAnonKey:"" },
+  supabase:null,
+  dataset:null,
+  resultsByRater:{ "主试1":[], "主试2":[], "其他人":[] },
+  selectedRater:"",
+  tasks:[],
+  index:0,
+  answers:{}
+};
+
+const els = {
+  messageBox: document.getElementById("messageBox"),
+  pageHome: document.getElementById("page-home"),
+  pageAdmin: document.getElementById("page-admin"),
+  pageRater: document.getElementById("page-rater"),
+  adminLoginOverlay: document.getElementById("adminLoginOverlay"),
+  openLoginBtn: document.getElementById("openLoginBtn"),
+  closeLoginBtn: document.getElementById("closeLoginBtn"),
+  adminPasswordInput: document.getElementById("adminPasswordInput"),
+  enterAdminBtn: document.getElementById("enterAdminBtn"),
+  startRater1Btn: document.getElementById("startRater1Btn"),
+  startRater2Btn: document.getElementById("startRater2Btn"),
+  startOtherBtn: document.getElementById("startOtherBtn"),
+  homeDatasetStatus: document.getElementById("homeDatasetStatus"),
+  backHomeFromAdminBtn: document.getElementById("backHomeFromAdminBtn"),
+  backHomeFromRaterBtn: document.getElementById("backHomeFromRaterBtn"),
+  supabaseUrlInput: document.getElementById("supabaseUrlInput"),
+  supabaseAnonKeyInput: document.getElementById("supabaseAnonKeyInput"),
+  saveCloudConfigBtn: document.getElementById("saveCloudConfigBtn"),
+  testCloudBtn: document.getElementById("testCloudBtn"),
+  fileInput: document.getElementById("fileInput"),
+  rawInput: document.getElementById("rawInput"),
+  loadSampleBtn: document.getElementById("loadSampleBtn"),
+  publishDatasetBtn: document.getElementById("publishDatasetBtn"),
+  clearRemoteDatasetBtn: document.getElementById("clearRemoteDatasetBtn"),
+  datasetCount: document.getElementById("datasetCount"),
+  rater1Count: document.getElementById("rater1Count"),
+  rater2Count: document.getElementById("rater2Count"),
+  otherCount: document.getElementById("otherCount"),
+  newPasswordInput: document.getElementById("newPasswordInput"),
+  savePasswordBtn: document.getElementById("savePasswordBtn"),
+  clearCurrentAnswersBtn: document.getElementById("clearCurrentAnswersBtn"),
+  refreshResultsBtn: document.getElementById("refreshResultsBtn"),
+  exportRawBtn: document.getElementById("exportRawBtn"),
+  raterPageTitle: document.getElementById("raterPageTitle"),
+  selectedRaterBadge: document.getElementById("selectedRaterBadge"),
+  remainingBadge: document.getElementById("remainingBadge"),
+  completedBadge: document.getElementById("completedBadge"),
+  progressBadge: document.getElementById("progressBadge"),
+  taskArea: document.getElementById("taskArea")
+};
+
+function showMessage(type, text){
+  if(!text){ els.messageBox.className="message hidden"; els.messageBox.textContent=""; return; }
+  els.messageBox.className="message " + (type==="error" ? "err" : "ok");
+  els.messageBox.textContent=text;
+}
+function toggleLogin(show){ els.adminLoginOverlay.classList.toggle("hidden", !show); if(show) els.adminPasswordInput.focus(); }
+function shuffle(arr){ const copy=[...arr]; for(let i=copy.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [copy[i],copy[j]]=[copy[j],copy[i]]; } return copy; }
+function splitCSVLine(line){ const result=[]; let current="", inQuotes=false; for(let i=0;i<line.length;i++){ const char=line[i], next=line[i+1]; if(char === '"'){ if(inQuotes && next === '"'){ current += '"'; i++; } else inQuotes=!inQuotes; } else if(char === ',' && !inQuotes){ result.push(current); current=""; } else current += char; } result.push(current); return result.map(x => x.trim()); }
+function parseWideRows(rows){
+  if(!rows.length) throw new Error("表格为空 / Empty table");
+  const headers=rows[0].map(x => String(x ?? "").trim());
+  const llmHeaders=headers.slice(1).filter(Boolean);
+  if(llmHeaders.length < 4) throw new Error("至少需要 4 个模型列 / Need at least 4 model columns");
+  const items=rows.slice(1).map((row, idx) => {
+    const prompt=String(row[0] ?? "").trim();
+    const candidates=llmHeaders.map((name, i) => ({ id:name, label:name, coding:String(row[i+1] ?? "").trim() })).filter(x => x.coding);
+    return { item_id:String(idx+1).padStart(3,"0"), prompt, candidates };
+  }).filter(x => x.prompt && x.candidates.length >= 4);
+  return { items, llmNames: llmHeaders };
+}
+function parseCSV(text){ const lines=text.trim().split(/\r?\n/).filter(Boolean); if(!lines.length) throw new Error("CSV 为空 / Empty CSV"); return parseWideRows(lines.map(splitCSVLine)); }
+function parseWorkbook(buffer){ const workbook=XLSX.read(buffer, { type:"array" }); const firstSheet=workbook.SheetNames[0]; if(!firstSheet) throw new Error("没有读取到工作表 / No worksheet found"); const worksheet=workbook.Sheets[firstSheet]; const rows=XLSX.utils.sheet_to_json(worksheet, { header:1, defval:"" }); return parseWideRows(rows); }
+function buildTasks(data, rater){ const tasks=[]; for(const item of data.items || []){ const randomized=shuffle(item.candidates).map((option, idx) => ({ ...option, displayKey: idx+1 })); tasks.push({ taskId:`${item.item_id}__FULL__${rater}`, item_id:item.item_id, rater, prompt:item.prompt, options:randomized }); } return tasks; }
+function exportCSV(rows){ if(!rows.length) return ""; const headers=Object.keys(rows[0]); const esc=v => { const s=String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; }; return [headers.join(","), ...rows.map(row => headers.map(h => esc(row[h])).join(","))].join("\n"); }
+function downloadText(filename, text){ const blob=new Blob([text], { type:"text/plain;charset=utf-8" }); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url); }
+function loadLocalConfig(){ try{ const raw=localStorage.getItem(STORAGE_CONFIG_KEY); return raw ? JSON.parse(raw) : { supabaseUrl:"", supabaseAnonKey:"" }; } catch { return { supabaseUrl:"", supabaseAnonKey:"" }; } }
+function createClientIfReady(){ if(!state.config.supabaseUrl || !state.config.supabaseAnonKey) return null; return window.supabase.createClient(state.config.supabaseUrl, state.config.supabaseAnonKey); }
+async function testConnection(){ if(!state.supabase) throw new Error("请先保存 Supabase 配置 / Save Supabase settings first"); const { error }=await state.supabase.from("app_config").select("key").limit(1); if(error) throw error; }
+async function loadAdminPasswordFromCloud(){ const { data, error }=await state.supabase.from("app_config").select("value").eq("key","admin_password").maybeSingle(); if(error) throw error; if(data?.value) state.adminPassword=data.value; }
+async function upsertAdminPassword(){ const { error }=await state.supabase.from("app_config").upsert({ key:"admin_password", value:state.adminPassword }); if(error) throw error; }
+async function loadDatasetFromCloud(){
+  const { data, error }=await state.supabase.from("dataset_items").select("*").order("item_order", { ascending:true });
+  if(error) throw error;
+  if(!data || !data.length){ state.dataset=null; return; }
+  const grouped=new Map();
+  for(const row of data){
+    if(!grouped.has(row.item_id)) grouped.set(row.item_id, { item_id:row.item_id, prompt:row.prompt, candidates:[] });
+    grouped.get(row.item_id).candidates.push({ id:row.model_id, label:row.model_id, coding:row.coding });
+  }
+  state.dataset={ items:Array.from(grouped.values()) };
+}
+async function loadResultsFromCloud(){
+  const { data, error }=await state.supabase.from("responses").select("*").order("created_at", { ascending:true });
+  if(error) throw error;
+  const grouped={ "主试1":[], "主试2":[], "其他人":[] };
+  for(const row of data || []){
+    if(!grouped[row.rater]) grouped[row.rater]=[];
+    grouped[row.rater].push({
+      taskId:row.task_id,
+      item_id:row.item_id,
+      rater:row.rater,
+      most_accurate:row.most_accurate_model_id,
+      most_novel:row.most_novel_model_id,
+      least_accurate:row.least_accurate_model_id,
+      least_novel:row.least_novel_model_id,
+      all_inaccurate:!!row.all_inaccurate,
+      all_not_novel:!!row.all_not_novel,
+      optionIds:row.option_ids || [],
+      created_at:row.created_at
+    });
+  }
+  state.resultsByRater=grouped;
+}
+async function publishDatasetToCloud(parsed){
+  const rows=[]; let orderCounter=1;
+  for(const item of parsed.items || []){
+    for(const cand of item.candidates){
+      rows.push({ item_id:item.item_id, prompt:item.prompt, model_id:cand.id, coding:cand.coding, item_order:orderCounter });
+    }
+    orderCounter += 1;
+  }
+  await state.supabase.from("dataset_items").delete().neq("item_id","");
+  const { error }=await state.supabase.from("dataset_items").insert(rows);
+  if(error) throw error;
+}
+async function clearResponsesCloud(){ const { error }=await state.supabase.from("responses").delete().neq("id",0); if(error) throw error; }
+async function clearDatasetCloud(){ const { error }=await state.supabase.from("dataset_items").delete().neq("item_id",""); if(error) throw error; }
+async function submitResponseCloud(row){
+  const { error }=await state.supabase.from("responses").insert({
+    task_id:row.taskId,
+    item_id:row.item_id,
+    rater:row.rater,
+    most_accurate_model_id:row.most_accurate,
+    most_novel_model_id:row.most_novel,
+    least_accurate_model_id:row.least_accurate,
+    least_novel_model_id:row.least_novel,
+    all_inaccurate:row.all_inaccurate,
+    all_not_novel:row.all_not_novel,
+    option_ids:row.optionIds
+  });
+  if(error) throw error;
+}
+function setPage(page){ state.page=page; els.pageHome.classList.toggle("hidden", page !== "home"); els.pageAdmin.classList.toggle("hidden", page !== "admin"); els.pageRater.classList.toggle("hidden", page !== "rater"); render(); }
+function renderHomeStatus(){ els.homeDatasetStatus.textContent = state.dataset ? `当前云端已发布 ${state.dataset.items?.length || 0} 条材料 / ${state.dataset.items?.length || 0} items published` : "当前云端还没有发布材料 / No cloud dataset published yet"; }
+function renderAdmin(){
+  els.supabaseUrlInput.value=state.config.supabaseUrl || "";
+  els.supabaseAnonKeyInput.value=state.config.supabaseAnonKey || "";
+  els.rawInput.value=state.dataset ? JSON.stringify(state.dataset, null, 2) : sampleRows.map(r => r.join(",")).join("\n");
+  els.datasetCount.textContent=`当前数据集 / Current dataset: ${state.dataset ? `${state.dataset.items?.length || 0} 条材料 / items` : "未发布 / Not published"}`;
+  els.rater1Count.textContent=`主试1 / Rater 1: ${(state.resultsByRater["主试1"] || []).length} 条记录 / records`;
+  els.rater2Count.textContent=`主试2 / Rater 2: ${(state.resultsByRater["主试2"] || []).length} 条记录 / records`;
+  els.otherCount.textContent=`其他人 / Others: ${(state.resultsByRater["其他人"] || []).length} 条记录 / records（不计入统计 / not counted）`;
+}
+function updateAnswer(taskId, field, value){ state.answers[taskId] = { ...(state.answers[taskId] || {}), [field]: value }; }
+function isTaskComplete(taskId){ const a=state.answers[taskId] || {}; return (!!a.most_accurate || !!a.all_inaccurate) && (!!a.most_novel || !!a.all_not_novel) && !!a.least_accurate && !!a.least_novel; }
+function renderRater(){
+  const currentTask=state.tasks[state.index] || null;
+  const raterCompleted=(state.resultsByRater[state.selectedRater] || []).length;
+  const progress=state.tasks.length ? Math.round((state.index/state.tasks.length)*100) : 100;
+  const raterLabel=state.selectedRater==="主试1" ? "主试1 / Rater 1" : state.selectedRater==="主试2" ? "主试2 / Rater 2" : "其他人 / Others";
+  els.raterPageTitle.textContent=`${raterLabel} 作答页面 / Response Page`;
+  els.selectedRaterBadge.textContent=raterLabel + (state.selectedRater==="其他人" ? "（不计入统计 / not counted）" : "");
+  els.remainingBadge.textContent=`剩余 / Remaining ${Math.max(state.tasks.length-state.index,0)} 题 / tasks`;
+  els.completedBadge.textContent=`已完成 / Completed ${raterCompleted} 条记录 / records`;
+  els.progressBadge.textContent=`当前进度 / Progress ${progress}%`;
+  if(!currentTask){ els.taskArea.innerHTML=`<div class="hint">当前任务已经完成 / Current task set is complete.</div>`; return; }
+  const a=state.answers[currentTask.taskId] || {};
+  els.taskArea.innerHTML=`
+    <div class="task-meta">
+      <span class="badge">材料 / Item ${currentTask.item_id}</span>
+      <span class="badge">${currentTask.options.length} 选 1 / choose 1</span>
+      <span class="badge">扁平 8×1 / Flat 8×1</span>
+    </div>
+    <div class="prompt">${currentTask.prompt}</div>
+    <div class="global-bar">
+      <div class="global-row">
+        <label class="pick"><input type="checkbox" id="allInaccurateBox" ${a.all_inaccurate ? "checked" : ""}> 都不准确 / All are inaccurate</label>
+        <label class="pick"><input type="checkbox" id="allNotNovelBox" ${a.all_not_novel ? "checked" : ""}> 都不新奇 / All are not novel</label>
+      </div>
+    </div>
+    <div class="option-list">
+      ${currentTask.options.map(option => `
+        <div class="option">
+          <div class="option-head">
+            <div class="option-title">选项 / Option ${option.displayKey}</div>
+            <div class="anon">匿名候选 / Anonymous</div>
+          </div>
+          <div class="coding">${option.coding}</div>
+          <div class="pick-zone">
+            <label class="pick"><input type="radio" name="${currentTask.taskId}_most_accurate" value="${option.id}" ${a.most_accurate === option.id ? "checked" : ""}> 最准确 / Most Accurate</label>
+            <label class="pick"><input type="radio" name="${currentTask.taskId}_most_novel" value="${option.id}" ${a.most_novel === option.id ? "checked" : ""}> 最新奇 / Most Novel</label>
+            <label class="pick"><input type="radio" name="${currentTask.taskId}_least_accurate" value="${option.id}" ${a.least_accurate === option.id ? "checked" : ""}> 最不准确 / Least Accurate</label>
+            <label class="pick"><input type="radio" name="${currentTask.taskId}_least_novel" value="${option.id}" ${a.least_novel === option.id ? "checked" : ""}> 最不新奇 / Least Novel</label>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+    <div class="btns" style="margin-top:16px">
+      <button class="primary mini-btn" id="submitTaskBtn" ${isTaskComplete(currentTask.taskId) ? "" : "disabled"}>提交本题并进入下一题 / Submit & Next</button>
+      <button class="secondary mini-btn" id="prevTaskBtn" ${state.index===0 ? "disabled" : ""}>上一题 / Previous</button>
+    </div>`;
+  document.getElementById("allInaccurateBox").addEventListener("change", (e) => { updateAnswer(currentTask.taskId, "all_inaccurate", e.target.checked); if(e.target.checked) updateAnswer(currentTask.taskId, "most_accurate", null); renderRater(); });
+  document.getElementById("allNotNovelBox").addEventListener("change", (e) => { updateAnswer(currentTask.taskId, "all_not_novel", e.target.checked); if(e.target.checked) updateAnswer(currentTask.taskId, "most_novel", null); renderRater(); });
+  ["most_accurate","most_novel","least_accurate","least_novel"].forEach(field => {
+    document.querySelectorAll(`input[name="${currentTask.taskId}_${field}"]`).forEach(el => {
+      el.addEventListener("change", (e) => {
+        updateAnswer(currentTask.taskId, field, e.target.value);
+        if(field==="most_accurate") updateAnswer(currentTask.taskId, "all_inaccurate", false);
+        if(field==="most_novel") updateAnswer(currentTask.taskId, "all_not_novel", false);
+        renderRater();
+      });
+    });
+  });
+  document.getElementById("submitTaskBtn").addEventListener("click", submitTask);
+  document.getElementById("prevTaskBtn").addEventListener("click", () => { if(state.index>0){ state.index -= 1; renderRater(); } });
+}
+function render(){ renderHomeStatus(); if(state.page==="admin") renderAdmin(); if(state.page==="rater") renderRater(); }
+function enterAdmin(){ showMessage(); if(els.adminPasswordInput.value===state.adminPassword){ toggleLogin(false); setPage("admin"); showMessage("ok", "已进入后台 / Entered admin panel"); } else showMessage("error", "密码不正确 / Incorrect password"); }
+async function saveCloudConfig(){
+  try{
+    showMessage();
+    state.config.supabaseUrl=els.supabaseUrlInput.value.trim();
+    state.config.supabaseAnonKey=els.supabaseAnonKeyInput.value.trim();
+    localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(state.config));
+    state.supabase=createClientIfReady();
+    if(!state.supabase) throw new Error("请填写完整的 URL 和 anon key / Fill URL and anon key");
+    await loadAdminPasswordFromCloud().catch(() => {});
+    await loadDatasetFromCloud().catch(() => {});
+    await loadResultsFromCloud().catch(() => {});
+    showMessage("ok", "云端配置已保存 / Cloud settings saved");
+    render();
+  }catch(err){ showMessage("error", err.message || "保存配置失败 / Failed to save settings"); }
+}
+async function testCloud(){ try{ showMessage(); if(!state.supabase) throw new Error("请先保存 Supabase 配置 / Save settings first"); await testConnection(); showMessage("ok", "Supabase 连接正常 / Connection works"); } catch(err){ showMessage("error", err.message || "连接失败 / Connection failed"); } }
+function readDatasetFromEditor(){ const trimmed=els.rawInput.value.trim(); return trimmed.startsWith("{") || trimmed.startsWith("[") ? JSON.parse(trimmed) : parseCSV(trimmed); }
+async function handleFileChange(event){
+  const file=event.target.files?.[0];
+  if(!file) return;
+  showMessage();
+  try{
+    const name=file.name.toLowerCase();
+    if(name.endsWith(".xlsx") || name.endsWith(".xls")){
+      const buffer=await file.arrayBuffer();
+      const parsed=parseWorkbook(buffer);
+      els.rawInput.value=JSON.stringify(parsed, null, 2);
+      showMessage("ok", `已读取 Excel / Excel loaded: ${file.name}`);
+      return;
+    }
+    const text=await file.text();
+    els.rawInput.value=text;
+    showMessage("ok", `已读取文件 / File loaded: ${file.name}`);
+  }catch(err){ showMessage("error", err.message || "文件读取失败 / File read failed"); }
+}
+async function publishDataset(){
+  try{
+    showMessage();
+    if(!state.supabase) throw new Error("请先配置 Supabase / Configure Supabase first");
+    const parsed=readDatasetFromEditor();
+    await publishDatasetToCloud(parsed);
+    state.dataset=parsed;
+    showMessage("ok", `已发布 / Published ${parsed.items?.length || 0} items`);
+    render();
+  }catch(err){ showMessage("error", err.message || "发布失败 / Publish failed"); }
+}
+async function clearRemoteDataset(){ try{ showMessage(); if(!state.supabase) throw new Error("请先配置 Supabase / Configure Supabase first"); await clearDatasetCloud(); state.dataset=null; showMessage("ok", "云端材料已清空 / Cloud dataset cleared"); render(); } catch(err){ showMessage("error", err.message || "清空云端材料失败 / Failed to clear cloud dataset"); } }
+async function savePassword(){ try{ showMessage(); const newPassword=els.newPasswordInput.value.trim(); if(!newPassword) throw new Error("请输入新后台密码 / Enter a new password"); state.adminPassword=newPassword; localStorage.setItem(STORAGE_PASSWORD_KEY, newPassword); if(state.supabase) await upsertAdminPassword(); els.newPasswordInput.value=""; showMessage("ok", "后台密码已更新 / Password updated"); } catch(err){ showMessage("error", err.message || "更新密码失败 / Failed to update password"); } }
+async function clearCurrentAnswers(){ try{ showMessage(); if(!state.supabase) throw new Error("请先配置 Supabase / Configure Supabase first"); await clearResponsesCloud(); state.resultsByRater={ "主试1":[], "主试2":[], "其他人":[] }; state.answers={}; state.tasks=[]; state.index=0; state.selectedRater=""; showMessage("ok", "当前作答记录已清空 / Responses cleared"); render(); } catch(err){ showMessage("error", err.message || "清空作答失败 / Failed to clear responses"); } }
+async function refreshResults(){ try{ showMessage(); if(!state.supabase) throw new Error("请先配置 Supabase / Configure Supabase first"); await loadResultsFromCloud(); await loadDatasetFromCloud(); showMessage("ok", "云端结果已刷新 / Results refreshed"); render(); } catch(err){ showMessage("error", err.message || "刷新失败 / Refresh failed"); } }
+function startRater(rater){
+  showMessage();
+  if(!state.dataset){ showMessage("error", "请先由管理员发布材料 / Please ask admin to publish dataset"); return; }
+  const builtTasks=buildTasks(state.dataset, rater);
+  const doneTaskIds=new Set((state.resultsByRater[rater] || []).map(x => x.taskId));
+  const remaining=builtTasks.filter(x => !doneTaskIds.has(x.taskId));
+  state.selectedRater=rater;
+  state.tasks=remaining;
+  state.index=0;
+  state.answers={};
+  setPage("rater");
+}
+async function submitTask(){
+  const currentTask=state.tasks[state.index];
+  if(!currentTask || !state.selectedRater || !isTaskComplete(currentTask.taskId)) return;
+  try{
+    const a=state.answers[currentTask.taskId] || {};
+    const row={
+      taskId:currentTask.taskId,
+      item_id:currentTask.item_id,
+      rater:state.selectedRater,
+      most_accurate:a.most_accurate || null,
+      most_novel:a.most_novel || null,
+      least_accurate:a.least_accurate || null,
+      least_novel:a.least_novel || null,
+      all_inaccurate:!!a.all_inaccurate,
+      all_not_novel:!!a.all_not_novel,
+      optionIds:currentTask.options.map(x => x.id)
+    };
+    if(!state.supabase) throw new Error("云端未配置 / Cloud not configured");
+    await submitResponseCloud(row);
+    state.resultsByRater[state.selectedRater]=[...(state.resultsByRater[state.selectedRater] || []), row];
+    state.index += 1;
+    showMessage("ok", "已记录本题选择 / Saved");
+    renderRater();
+    renderAdmin();
+  }catch(err){ showMessage("error", err.message || "提交失败 / Submission failed"); }
+}
+function exportRaw(){
+  const rows=[...(state.resultsByRater["主试1"]||[]), ...(state.resultsByRater["主试2"]||[]), ...(state.resultsByRater["其他人"]||[])];
+  if(!rows.length){ showMessage("error", "暂无原始记录可导出 / No raw data"); return; }
+  downloadText("comparison_raw.csv", exportCSV(rows));
+}
+async function init(){
+  const savedPassword=localStorage.getItem(STORAGE_PASSWORD_KEY);
+  if(savedPassword) state.adminPassword=savedPassword;
+  state.config=loadLocalConfig();
+  state.supabase=createClientIfReady();
+  els.supabaseUrlInput.value=state.config.supabaseUrl || "";
+  els.supabaseAnonKeyInput.value=state.config.supabaseAnonKey || "";
+  els.rawInput.value=sampleRows.map(r => r.join(",")).join("\n");
+  if(state.supabase){
+    await loadAdminPasswordFromCloud().catch(() => {});
+    await loadDatasetFromCloud().catch(() => {});
+    await loadResultsFromCloud().catch(() => {});
+  }
+  els.openLoginBtn.addEventListener("click", () => toggleLogin(true));
+  els.closeLoginBtn.addEventListener("click", () => toggleLogin(false));
+  els.adminLoginOverlay.addEventListener("click", (e) => { if(e.target===els.adminLoginOverlay) toggleLogin(false); });
+  els.enterAdminBtn.addEventListener("click", enterAdmin);
+  els.adminPasswordInput.addEventListener("keydown", (e) => { if(e.key==="Enter") enterAdmin(); });
+  els.startRater1Btn.addEventListener("click", () => startRater("主试1"));
+  els.startRater2Btn.addEventListener("click", () => startRater("主试2"));
+  els.startOtherBtn.addEventListener("click", () => startRater("其他人"));
+  els.backHomeFromAdminBtn.addEventListener("click", () => setPage("home"));
+  els.backHomeFromRaterBtn.addEventListener("click", () => setPage("home"));
+  els.saveCloudConfigBtn.addEventListener("click", saveCloudConfig);
+  els.testCloudBtn.addEventListener("click", testCloud);
+  els.fileInput.addEventListener("change", handleFileChange);
+  els.loadSampleBtn.addEventListener("click", () => { els.rawInput.value=sampleRows.map(r => r.join(",")).join("\n"); showMessage("ok", "已载入示例 / Sample loaded"); });
+  els.publishDatasetBtn.addEventListener("click", publishDataset);
+  els.clearRemoteDatasetBtn.addEventListener("click", clearRemoteDataset);
+  els.savePasswordBtn.addEventListener("click", savePassword);
+  els.clearCurrentAnswersBtn.addEventListener("click", clearCurrentAnswers);
+  els.refreshResultsBtn.addEventListener("click", refreshResults);
+  els.exportRawBtn.addEventListener("click", exportRaw);
+  setPage("home");
+  render();
+}
+init();
+</script>
+</body>
+</html>
