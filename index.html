@@ -109,6 +109,9 @@ html,body{min-height:100%;height:100%;background:var(--bg);color:var(--tx);font-
 .aic.pick-same-best .abadge{display:block;background:var(--same);color:#000}
 .aic.pick-same-worst{border-color:#f97316;background:rgba(249,115,22,.07)}
 .aic.pick-same-worst .abadge{display:block;background:#f97316;color:#fff}
+.none-new-btn{background:transparent;border:1px solid var(--bd);border-radius:8px;padding:9px 16px;font-size:.8rem;font-family:inherit;color:var(--mu);cursor:pointer;transition:all .18s;width:100%;text-align:left;display:flex;align-items:center;gap:8px;margin-top:8px}
+.none-new-btn:hover{border-color:#f97316;color:#f97316}
+.none-new-btn.active{border-color:#f97316;background:rgba(249,115,22,.1);color:#f97316;font-weight:600}
 .bbar{position:sticky;bottom:0;left:0;right:0;background:var(--sf);border-top:1px solid var(--bd);padding:10px 13px calc(10px + var(--sb));display:flex;align-items:center;gap:8px;z-index:40}
 .bcnf{flex:1;background:var(--ac);color:#fff;border:none;border-radius:8px;padding:13px;font-size:.9rem;font-family:inherit;font-weight:600;cursor:pointer;transition:opacity .18s}
 .bcnf:disabled{opacity:.25;cursor:not-allowed}.bcnf:not(:disabled):active{opacity:.8}
@@ -208,7 +211,7 @@ html,body{min-height:100%;height:100%;background:var(--bg);color:var(--tx);font-
       <input id="judgeInput" type="text" placeholder="例如：Judge_A" maxlength="30"/>
     </div>
     <button class="btn bp" style="width:100%" onclick="startJudge()">开始评审 →</button>
-    <div class="shint">管理员？<a href="#" onclick="goAdmin(event)">进入管理员后台</a></div>
+    <div class="shint" id="adminHint" style="display:none"><a href="#" onclick="goAdmin(event)">管理员后台</a></div>
   </div>
 </div>
 
@@ -394,7 +397,7 @@ html,body{min-height:100%;height:100%;background:var(--bg);color:var(--tx);font-
 // ★ CONFIG — deploy 前只改这两项
 // ══════════════════════════════════════════════════
 const CFG={
-  adminPwd:  "CGT",              // ★ 改成你的管理员密码
+  adminPwd:  "admin2024",              // ★ 改成你的管理员密码
   scriptUrl: "https://script.google.com/macros/s/AKfycbzHY2plknIEE79WhoPl4YI79LhPagxrH9IFPJ1rTLSvSnl_YWC50vYvGKh8jdxS7Gwp/exec",   // ★ 填入 Google Apps Script 网址
 };
 // 数据存在 Google Sheet 里，脚本网址是公开的，不包含任何密钥。
@@ -455,6 +458,11 @@ function nav(targetId){
 // INIT
 // ══════════════════════════════════════════════════
 async function init(){
+  // Secret admin access: open yoursite.com?admin to reveal admin link
+  if(location.search.includes("admin")||location.hash==="#admin"){
+    const h=document.getElementById("adminHint");
+    if(h)h.style.display="block";
+  }
   const cfgOk=CFG.scriptUrl&&!CFG.scriptUrl.includes("YOUR_APPS");
   if(!cfgOk){
     hideLd();
@@ -470,13 +478,21 @@ async function init(){
     if(startBtn){startBtn.disabled=true;startBtn.style.opacity="0.3";}
     return;
   }
-  ld("正在加载材料...");
+  // Try loading from localStorage cache first (instant)
+  const cached=localStorage.getItem("ev_data_cache");
+  if(cached){try{const d=JSON.parse(cached);if(d&&d.length)DATA=d;}catch(ex){}}
+
+  // Then fetch fresh from Google Sheets in background
+  ld(DATA.length?"正在更新材料...":"正在加载材料...");
   try{
     const d=await gsCall("getData",{});
-    if(d&&Array.isArray(d)&&d.length)DATA=d;
-  }catch(ex){}
+    if(d&&Array.isArray(d)&&d.length){
+      DATA=d;
+      localStorage.setItem("ev_data_cache",JSON.stringify(d));
+    }
+  }catch(ex){console.warn("Could not fetch fresh data, using cache",ex);}
   hideLd();
-  if(!DATA.length){document.getElementById("ndw").textContent="⚠ 管理员尚未上传评审材料，请联系管理员后再开始。";document.getElementById("ndw").style.display="block";}
+  if(!DATA.length){document.getElementById("ndw").textContent="⚠ No material uploaded yet. Please contact the admin.";document.getElementById("ndw").style.display="block";}
 }
 function ld(m){document.getElementById("loadScreen").style.display="flex";document.getElementById("loadMsg").textContent=m;}
 function hideLd(){document.getElementById("loadScreen").style.display="none";}
@@ -504,27 +520,77 @@ function renderItem(){
   AP=sv.acc?{...sv.acc}:{};NP=sv.nov?{...sv.nov}:{};
   document.getElementById("evalMain").innerHTML=
     `<div class="mc"><div class="mm"><span class="mn">#${id+1}/${DATA.length}</span><span class="mtg">原始消息</span></div><div class="mtx">${e(row.original_text)}</div></div>`+
-    `<div class="hbox"><strong>操作：</strong>点一次 <span style="color:var(--best)">✓ 最佳</span>，再点 <span style="color:var(--worst)">✗ 最差</span>，再点取消。AI 名称已隐藏。</div>`+
+    `<div class="hbox"><strong>How to judge:</strong> Click once = <span style="color:var(--best)">✓ Best</span>, click again = <span style="color:var(--worst)">✗ Worst</span>, click again = cancel. AI names are hidden. If all labels are identical, the dimension is auto-filled.</div>`+
     buildDim("acc",AP,row,"🎯","维度一：准确性","标签是否准确描述消息意图？")+
     buildDim("nov",NP,row,"✨","维度二：新颖性","标签是否具体独到？");
   bindC();upCnf();
 }
 
+function allSame(row,dim){
+  // Returns true if every AI label in this dimension is identical (or all empty)
+  const vals=AIK.map(bk=>{const l=lbl(row,bk);return l?l.t:null;}).filter(v=>v!==null);
+  if(!vals.length)return true;
+  return vals.every(v=>v===vals[0]);
+}
 function buildDim(dim,picks,row,ico,nm,nt){
   const lmap={};AIK.forEach(bk=>{const l=lbl(row,bk);const k=l?l.t:"__E__";if(!lmap[k])lmap[k]=[];lmap[k].push(bk);});
+
+  // If ALL labels are identical → auto-mark all as same-best, show locked notice
+  const totalGroups=Object.keys(lmap).filter(k=>k!=="__E__").length;
+  const isAllSame=totalGroups<=1;
+  if(isAllSame){
+    // Auto-fill picks so confirm button works without judge doing anything
+    AIK.forEach(bk=>picks[bk]="same-best");
+    return `<div class="db">
+      <div class="dh"><div class="di ${dim}">${ico}</div><span class="dn">${nm}</span></div>
+      <div style="background:rgba(124,106,247,.1);border:1px solid rgba(124,106,247,.3);border-radius:8px;padding:12px 14px;font-size:.82rem;color:var(--ac);display:flex;align-items:center;gap:8px">
+        ✅ All 8 AI labels are identical in this dimension — automatically marked as tied, no selection needed.
+      </div>
+    </div>`;
+  }
+
   const dup=Object.values(lmap).some(a=>a.length>1&&a[0]!=="__E__");
-  const dn=dup?`<div class="dupn">⚡ 存在相同标签，选中时自动并列</div>`:"";
+  const dn=dup?`<div class="dupn">⚡ Some labels are identical — selecting one auto-groups them</div>`:"";
   const cards=AIK.map(bk=>{
     const l=lbl(row,bk);
-    const lh=!l?`<span class="albl empty">（无标签）</span>`:l.f?`<span class="albl failed">⚠ ${e(l.t)}</span>`:`<span class="albl">${e(l.t)}</span>`;
+    const lh=!l?`<span class="albl empty">（no label）</span>`:l.f?`<span class="albl failed">⚠ ${e(l.t)}</span>`:`<span class="albl">${e(l.t)}</span>`;
     const st=picks[bk]||"";const cls=st?` pick-${st}`:"";
-    const bt={best:"✓ 最佳",worst:"✗ 最差","same-best":"≈ 最佳","same-worst":"≈ 最差"}[st]||"";
+    const bt={best:"✓ Best",worst:"✗ Worst","same-best":"≈ Best","same-worst":"≈ Worst"}[st]||"";
     return `<div class="aic${cls}" data-d="${dim}" data-k="${bk}"><div class="ait"><span class="acode">${bk}</span>${lh}</div><span class="abadge">${bt}</span></div>`;
   }).join("");
-  return `<div class="db"><div class="dh"><div class="di ${dim}">${ico}</div><span class="dn">${nm}</span><span class="dnote">${nt}</span></div><div class="leg"><div class="li"><div class="ld" style="background:var(--best)"></div>最佳</div><div class="li"><div class="ld" style="background:var(--worst)"></div>最差</div><div class="li"><div class="ld" style="background:var(--same)"></div>并列</div></div>${dn}<div class="ail">${cards}</div></div>`;
+  const noneActive=picks["__none__"]==="none";
+  return `<div class="db"><div class="dh"><div class="di ${dim}">${ico}</div><span class="dn">${nm}</span><span class="dnote">${nt}</span></div><div class="leg"><div class="li"><div class="ld" style="background:var(--best)"></div>Best</div><div class="li"><div class="ld" style="background:var(--worst)"></div>Worst</div><div class="li"><div class="ld" style="background:var(--same)"></div>Tied</div></div>${dn}<div class="ail">${cards}</div>
+    <button class="none-new-btn${noneActive?" active":""}" onclick="toggleNoneNew('${dim}')" data-dim="${dim}">
+      🚫 ${noneActive?"None are new (selected — click to undo)":"None are new — all labels are too generic, no winner"}
+    </button>
+  </div>`;
 }
 
 function bindC(){document.querySelectorAll(".aic").forEach(c=>c.addEventListener("click",()=>tog(c.dataset.k,c.dataset.d,c.dataset.d==="acc"?AP:NP,DATA[idx])));}
+
+function toggleNoneNew(dim){
+  const picks=dim==="acc"?AP:NP;
+  if(picks["__none__"]==="none"){
+    // Undo — clear the none flag
+    delete picks["__none__"];
+  } else {
+    // Activate — clear all individual picks, set none flag
+    AIK.forEach(k=>picks[k]=null);
+    picks["__none__"]="none";
+  }
+  // Re-render this dimension
+  const row=DATA[idx];
+  const ico=dim==="acc"?"🎯":"✨";
+  const nm=dim==="acc"?"Dimension 1: Accuracy":"Dimension 2: Novelty";
+  const nt=dim==="acc"?"Does the label correctly describe the message intent?":"Is the label specific and original?";
+  const block=document.querySelector(`.db [data-dim="${dim}"]`)?.closest(".db");
+  if(block){block.outerHTML=buildDim(dim,picks,row,ico,nm,nt);}
+  else{
+    // fallback: full re-render
+    renderItem();return;
+  }
+  bindC();upCnf();
+}
 
 function tog(bk,dim,picks,row){
   const cur=picks[bk]||null;let nx=!cur?"best":(cur==="best"||cur==="same-best")?"worst":null;
@@ -535,7 +601,11 @@ function tog(bk,dim,picks,row){
   upCnf();
 }
 
-function upCnf(){const oA=Object.values(AP).some(v=>v==="best"||v==="same-best"),oN=Object.values(NP).some(v=>v==="best"||v==="same-best");document.getElementById("cnfBtn").disabled=!(oA&&oN);}
+function upCnf(){
+  const oA=AP["__none__"]==="none"||Object.values(AP).some(v=>v==="best"||v==="same-best");
+  const oN=NP["__none__"]==="none"||Object.values(NP).some(v=>v==="best"||v==="same-best");
+  document.getElementById("cnfBtn").disabled=!(oA&&oN);
+}
 function upProg(){const dn=Object.values(local).filter(s=>s&&s.acc&&s.nov).length,pct=DATA.length?(dn/DATA.length*100).toFixed(1):0;document.getElementById("pfill").style.width=pct+"%";document.getElementById("pnum").textContent=dn+"/"+DATA.length;}
 
 async function confirmItem(){
@@ -579,15 +649,22 @@ function exportMyCSV(){
 // CLOUD — Google Apps Script
 // ══════════════════════════════════════════════════
 async function gsCall(action, payload){
-  const url=CFG.scriptUrl+"?action="+action;
-  const r=await fetch(url,{
-    method:"POST",
-    headers:{"Content-Type":"text/plain"},
-    body:JSON.stringify(payload)
-  });
-  if(!r.ok)return null;
-  const j=await r.json();
-  return j.data!==undefined?j.data:j;
+  // action goes in both URL param AND request body — Apps Script reads either
+  const url=CFG.scriptUrl+"?action="+encodeURIComponent(action);
+  try{
+    const r=await fetch(url,{
+      method:"POST",
+      headers:{"Content-Type":"text/plain"},
+      body:JSON.stringify({action,...payload})
+    });
+    if(!r.ok)return null;
+    const j=await r.json();
+    if(j.error)console.warn("Script error:",j.error);
+    return j.data!==undefined?j.data:j;
+  }catch(ex){
+    console.warn("gsCall failed:",ex);
+    return null;
+  }
 }
 async function pushCloud(){
   if(!CFG.scriptUrl||CFG.scriptUrl.includes("YOUR_APPS"))return;
@@ -758,7 +835,7 @@ async function uploadMat(){
     if(!Array.isArray(p))throw new Error("应为 JSON 数组格式");
     setUmsg("上传中...","info");
     const ok=await gsCall("setData",{data:p});
-    if(ok!==null){DATA=p;setUmsg(`✓ 上传成功，共 ${p.length} 条`,"ok");upOverview();document.getElementById("ndw").style.display=DATA.length?"none":"block";}
+    if(ok!==null){DATA=p;localStorage.setItem("ev_data_cache",JSON.stringify(p));setUmsg(`✓ Upload successful, ${p.length} items`,"ok");upOverview();document.getElementById("ndw").style.display=DATA.length?"none":"block";}
     else setUmsg("❌ 上传失败，请检查 scriptUrl 是否正确","err");
   }catch(ex){setUmsg("❌ "+ex.message,"err");}
 }
