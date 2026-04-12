@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -200,7 +201,7 @@ html,body{min-height:100%;height:100%;background:var(--bg);color:var(--tx);font-
 <div class="page active" id="pSetup">
   <div class="logo">AI 编码<span>评审</span></div>
   <p class="sub">每条消息分 <strong>准确性</strong> 与 <strong>新颖性</strong> 两个维度。<br>AI 名称隐藏，结果实时保存至云端。</p>
-  <div id="ndw" class="ndw">⚠ 管理员尚未上传评审材料，请联系管理员后再开始。</div>
+  <div id="ndw" class="ndw">⚠ 评审材料尚未就绪，请联系管理员配置后再开始评审。</div>
   <div class="sbox">
     <div class="fld" style="margin-bottom:4px">
       <label>评审员姓名或编号</label>
@@ -273,16 +274,10 @@ html,body{min-height:100%;height:100%;background:var(--bg);color:var(--tx);font-
     <!-- LOGIN -->
     <div id="aLogin">
       <div class="sec">
-        <div class="stitle">🔐 连接配置</div>
-        <div class="fld"><label>管理员密码</label><input type="password" id="aPass" placeholder="管理员密码" onkeydown="if(event.key==='Enter')connect()"/></div>
-        <div class="fld"><label>GitHub Token（需 gist 权限）</label><input type="password" id="ghTok" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"/></div>
-        <div class="fld"><label>Gist ID（留空自动创建）</label><input type="text" id="gidIn" placeholder="留空则自动创建"/></div>
-        <button class="btn bp" onclick="connect()">连接 →</button>
+        <div class="stitle">🔐 管理员登录</div>
+        <div class="fld"><label>管理员密码</label><input type="password" id="aPass" placeholder="输入管理员密码" onkeydown="if(event.key==='Enter')connect()"/></div>
+        <button class="btn bp" onclick="connect()">进入后台 →</button>
         <div id="cmsg" class="smsg"></div>
-      </div>
-      <div class="sec" style="font-size:.81rem;color:var(--mu);line-height:1.9">
-        <div class="stitle" style="color:var(--tx)">💡 获取 Token 步骤</div>
-        GitHub → 头像 → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → 勾选 <code style="background:var(--sf);padding:1px 6px;border-radius:4px;font-size:.79rem">gist</code> 权限 → 生成并复制
       </div>
     </div>
 
@@ -366,9 +361,18 @@ html,body{min-height:100%;height:100%;background:var(--bg);color:var(--tx);font-
       <div id="pg-settings" class="apg">
         <div class="sec">
           <div class="stitle">⚙️ Gist 信息</div>
-          <div class="fld"><label>Gist ID</label><input type="text" id="gidDisp" readonly style="color:var(--ac);cursor:text"/></div>
-          <div class="fld"><label>Gist 链接</label><input type="text" id="gurlDisp" readonly style="color:var(--ac);cursor:text"/></div>
-          <button class="btn bg bsm" onclick="copyGid()">复制 Gist ID</button>
+          <div class="fld">
+            <label>Gist ID（已内置于 HTML）</label>
+            <input type="text" id="gidDisp" readonly style="color:var(--ac);cursor:text"/>
+          </div>
+          <div class="fld">
+            <label>Gist 链接</label>
+            <input type="text" id="gurlDisp" readonly style="color:var(--ac);cursor:text"/>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn bg bsm" onclick="copyGid()">复制 Gist ID</button>
+            <button class="btn bg bsm" onclick="window.open(document.getElementById('gurlDisp').value,'_blank')">在 GitHub 查看 →</button>
+          </div>
         </div>
         <div class="sec">
           <div class="stitle" style="color:var(--worst)">🗑️ 危险操作</div>
@@ -387,9 +391,17 @@ html,body{min-height:100%;height:100%;background:var(--bg);color:var(--tx);font-
 
 <script>
 // ══════════════════════════════════════════════════
-// CONFIG
+// ★ CONFIG — ONLY YOU EDIT THIS BLOCK BEFORE DEPLOY
 // ══════════════════════════════════════════════════
-const CFG={adminPwd:"admin2024",defaultGistId:"",gistData:"eval_data.json",gistResults:"eval_results.json"};
+const CFG={
+  adminPwd:  "CGT",       // ★ 改成你的管理员密码
+  gistToken: "YOUR_TOKEN_HERE", // ★ 填入 GitHub Token (ghp_xxx...) — 只有你能看到此文件源码
+  gistId:    "7253ae639b76f336e246115939683a4f",    // ★ 填入 Gist ID（第一次运行后从 GitHub 复制）
+  gistData:    "eval_data.json",
+  gistResults: "eval_results.json",
+};
+// 评审员打开网页时完全看不到 token/gistId，它们只存在于此处源码中。
+// 朋友只需打开网址、输入姓名，即可直接开始评审。
 const AIK=["A","B","C","D","E","F","G","H"];
 const RK=["Deepseek","Doubao","Gemini","GPT","llama","Qwen","THUDM","ZAI-GLM"];
 const COL={};AIK.forEach((k,i)=>COL[k]=RK[i]+"_code1");
@@ -398,7 +410,10 @@ const FRE=/提取失败|待细化|待确认|数据缺失|未分类|文本主旨/
 // ══════════════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════════════
-let DATA=[],judge="",idx=0,local={},cloud={},tok="",gid=CFG.defaultGistId,AP={},NP={},ALB="acc",RT="acc";
+let DATA=[],judge="",idx=0,local={},cloud={},AP={},NP={},ALB="acc",RT="acc";
+// tok and gid are always taken from CFG — never entered by users
+const tok=CFG.gistToken;
+const gid=CFG.gistId;
 let modalCb=null;
 
 // ══════════════════════════════════════════════════
@@ -446,10 +461,25 @@ function nav(targetId){
 // INIT
 // ══════════════════════════════════════════════════
 async function init(){
-  ld("正在初始化...");
-  if(gid){try{const r=await gFetch(gid,CFG.gistData,"");if(r)DATA=JSON.parse(r);}catch(ex){}}
+  const cfgOk=tok&&tok!=="YOUR_TOKEN_HERE"&&gid&&gid!=="YOUR_GIST_ID";
+  if(!cfgOk){
+    hideLd();
+    document.getElementById("ndw").innerHTML=
+      "<strong>⚙️ 网站尚未配置</strong> — 管理员请完成以下步骤（仅需一次）：<br><br>"+
+      "① 前往 GitHub 生成 Personal Access Token，勾选 <code>gist</code> 权限<br>"+
+      "② 在 GitHub 新建一个 Secret Gist，复制其 ID（URL 中最后一段）<br>"+
+      "③ 用编辑器打开此 HTML 文件，在 <code>CFG</code> 块填入 <code>gistToken</code> 和 <code>gistId</code><br>"+
+      "④ 重新上传到 GitHub Pages，再通过管理员后台上传评审材料<br><br>"+
+      "配置完成后，你的朋友打开网址输入姓名即可直接开始评审，无需任何其他设置。";
+    document.getElementById("ndw").style.display="block";
+    const startBtn=document.querySelector("#pSetup .bp");
+    if(startBtn){startBtn.disabled=true;startBtn.style.opacity="0.3";}
+    return;
+  }
+  ld("正在加载材料...");
+  try{const r=await gFetch(gid,CFG.gistData,tok);if(r){const d=JSON.parse(r);if(d&&d.length)DATA=d;}}catch(ex){}
   hideLd();
-  if(!DATA.length)document.getElementById("ndw").style.display="block";
+  if(!DATA.length){document.getElementById("ndw").textContent="⚠ 管理员尚未上传评审材料，请联系管理员后再开始。";document.getElementById("ndw").style.display="block";}
 }
 function ld(m){document.getElementById("loadScreen").style.display="flex";document.getElementById("loadMsg").textContent=m;}
 function hideLd(){document.getElementById("loadScreen").style.display="none";}
@@ -559,19 +589,22 @@ async function pushCloud(){if(!gid||!tok)return;try{const r=await gFetch(gid,CFG
 // ══════════════════════════════════════════════════
 // ADMIN
 // ══════════════════════════════════════════════════
-function goAdmin(ev){ev.preventDefault();nav("pAdmin");const sv=localStorage.getItem("ev_adm");if(sv){const c=JSON.parse(sv);document.getElementById("ghTok").value=c.tok||"";document.getElementById("gidIn").value=c.gid||"";}}
+function goAdmin(ev){ev.preventDefault();nav("pAdmin");}
 
 async function connect(){
   const pw=document.getElementById("aPass").value;
   if(pw!==CFG.adminPwd){setCmsg("密码错误","err");return;}
-  const t=document.getElementById("ghTok").value.trim();if(!t){setCmsg("请输入 GitHub Token","err");return;}
-  tok=t;let g=document.getElementById("gidIn").value.trim();setCmsg("连接中...","info");
+  if(!tok||tok==="YOUR_TOKEN_HERE"||!gid||gid==="YOUR_GIST_ID"){
+    setCmsg("❌ 请先在 HTML 源文件的 CFG 块中填写 gistToken 和 gistId，然后重新上传","err");return;
+  }
+  setCmsg("验证中...","info");
   try{
-    if(!g){setCmsg("正在创建 Gist...","info");g=await gCreate();if(!g)throw new Error("创建失败，请确认 Token 有 gist 权限");document.getElementById("gidIn").value=g;}
-    gid=g;const test=await gFetch(gid,CFG.gistResults,tok);if(test===null)throw new Error("无法读取 Gist，请检查 ID 和 Token");
-    cloud=JSON.parse(test||"{}");localStorage.setItem("ev_adm",JSON.stringify({tok,gid}));
-    const rd=await gFetch(gid,CFG.gistData,tok);if(rd)try{const d=JSON.parse(rd);if(d.length){DATA=d;document.getElementById("ndw").style.display="none";}}catch(ex){}
-    setCmsg("✓ 连接成功: "+gid,"ok");
+    const test=await gFetch(gid,CFG.gistResults,tok);
+    if(test===null)throw new Error("Gist 连接失败，请检查 CFG 中的 gistToken 和 gistId 是否正确");
+    cloud=JSON.parse(test||"{}");
+    const rd=await gFetch(gid,CFG.gistData,tok);
+    if(rd)try{const d=JSON.parse(rd);if(d&&d.length){DATA=d;document.getElementById("ndw").style.display="none";}}catch(ex){}
+    setCmsg("✓ 登录成功","ok");
     document.getElementById("aLogin").style.display="none";
     document.getElementById("aDash").style.display="block";
     document.getElementById("anav").style.display="flex";
@@ -724,9 +757,9 @@ function dlAllCSV(){
 ,RK[i],bk,a,n,en.ts||""]);});});});dlCSV(rows,`eval_all_${td()}.csv`);
 }
 function dlRawJSON(){const b=new Blob([JSON.stringify(cloud,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=`eval_raw_${td()}.json`;a.click();}
-function copyGid(){navigator.clipboard.writeText(gid).then(()=>toast("Gist ID 已复制"));}
+function copyGid(){navigator.clipboard.writeText(gid).then(()=>toast("Gist ID 已复制！")).catch(()=>toast(gid));}
 function confirmClearAll(){openModal("清空全部结果","将永久删除所有评审员的全部评审记录。此操作不可撤销。",clearAllRes);}
-async function clearAllRes(){cloud={};ld("保存中...");const ok=await gPatch(CFG.gistResults,"{}");hideLd();if(ok){toast("已清空全部结果");refreshAll();}else toast("❌ 操作失败");}
+async function clearAllRes(){ld("保存中...");const ok=await gPatch(CFG.gistResults,"{}");hideLd();if(ok){cloud={};toast("已清空全部结果");refreshAll();}else toast("❌ 操作失败");}
 
 // ══════════════════════════════════════════════════
 // MODAL
@@ -751,7 +784,5 @@ let tTimer;
 function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");clearTimeout(tTimer);tTimer=setTimeout(()=>t.classList.remove("show"),2600);}
 init();
 </script>
-</body>
-</html>
 </body>
 </html>
