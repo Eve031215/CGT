@@ -311,34 +311,46 @@ html,body{min-height:100%;height:100%;background:var(--bg);color:var(--tx);font-
 
       <!-- Material -->
       <div id="pg-material" class="apg">
+        <!-- Current status — shown always -->
         <div class="sec">
-          <div class="stitle">📂 当前材料状态</div>
-          <div id="matInfo" style="font-size:.83rem;color:var(--mu);margin-bottom:14px">加载中...</div>
+          <div class="stitle">📂 Material Status</div>
+          <div id="matInfo" style="font-size:.83rem;color:var(--mu);margin-bottom:14px">Loading...</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn bg bsm" onclick="previewMat()">预览数据</button>
-            <button class="btn bg bsm" onclick="dlMatJSON()">下载 JSON</button>
+            <button class="btn bg bsm" onclick="previewMat()">Preview</button>
+            <button class="btn bg bsm" onclick="dlMatJSON()">Download JSON</button>
           </div>
         </div>
+
+        <!-- Replace section — collapsed by default if material exists -->
         <div class="sec">
-          <div class="stitle">📤 上传新材料</div>
-          <p style="font-size:.79rem;color:var(--mu);margin-bottom:13px">上传后所有评审员刷新页面即加载新材料。已有结果不受影响。</p>
-          <div class="fld">
-            <label>方式一：粘贴 JSON 内容</label>
-            <textarea id="ujson" placeholder='[{"content_id":0,"original_text":"...","Deepseek_code1":"..."}]'></textarea>
+          <div class="stitle" style="cursor:pointer;user-select:none" onclick="toggleUploadPanel()">
+            📤 Replace Material
+            <span id="uploadToggleIcon" style="margin-left:auto;font-size:.8rem;color:var(--mu)">▸ expand</span>
           </div>
-          <div class="fld">
-            <label>方式二：选择本地 .json 文件</label>
-            <input type="file" id="ufile" accept=".json" style="padding:8px" onchange="readFile()"/>
+          <div id="uploadPanel" style="display:none;margin-top:12px">
+            <p style="font-size:.79rem;color:var(--mu);margin-bottom:13px">
+              ⚠ Only do this if you want to <strong>replace</strong> the existing material.
+              Once uploaded, it stays in Google Sheets — you never need to upload again.
+            </p>
+            <div class="fld">
+              <label>Option 1: Paste JSON content</label>
+              <textarea id="ujson" placeholder='[{"content_id":0,"original_text":"...","Deepseek_code1":"..."}]'></textarea>
+            </div>
+            <div class="fld">
+              <label>Option 2: Choose a local .json file</label>
+              <input type="file" id="ufile" accept=".json" style="padding:8px" onchange="readFile()"/>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn bp" onclick="uploadMat()">Upload & Replace</button>
+              <button class="btn bg bsm" onclick="clearUp()">Clear</button>
+            </div>
+            <div id="umsg" class="smsg"></div>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn bp" onclick="uploadMat()">上传材料</button>
-            <button class="btn bg bsm" onclick="clearUp()">清空</button>
-          </div>
-          <div id="umsg" class="smsg"></div>
         </div>
+
         <div id="matPrev" style="display:none">
           <div class="sec">
-            <div class="stitle">🔍 数据预览（前 5 条）</div>
+            <div class="stitle">🔍 Preview (first 5 items)</div>
             <div id="prevCt" style="font-size:.77rem;color:var(--mu);line-height:1.8"></div>
           </div>
         </div>
@@ -735,9 +747,25 @@ function upOverview(){
       }).join("")
     : `<div style="color:var(--mu);font-size:.83rem;padding:10px 0">暂无数据</div>`;
 
-  document.getElementById("matInfo").innerHTML=DATA.length
-    ? `已加载 <strong>${DATA.length}</strong> 条，共 ${RK.length} 个 AI 模型`
-    : `<span style="color:var(--worst)">尚未上传材料</span>`;
+  const mi=document.getElementById("matInfo");
+  if(DATA.length){
+    mi.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.3);color:var(--best);border-radius:7px;padding:5px 12px;font-size:.82rem">
+        ✅ Material loaded — <strong>${DATA.length}</strong> messages, ${RK.length} AI models
+      </span>
+      <span style="font-size:.78rem;color:var(--mu)">Saved in Google Sheets · No re-upload needed</span>
+    </div>`;
+  } else {
+    mi.innerHTML=`<div style="display:flex;align-items:center;gap:10px">
+      <span style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--worst);border-radius:7px;padding:5px 12px;font-size:.82rem">
+        ⚠ No material yet — please upload below
+      </span>
+    </div>`;
+    // Auto-expand upload panel if no material
+    const panel=document.getElementById("uploadPanel");
+    const icon=document.getElementById("uploadToggleIcon");
+    if(panel){panel.style.display="block";if(icon)icon.textContent="▾ collapse";}
+  }
 }
 
 // Delete entire judge
@@ -827,6 +855,13 @@ function drawALB(dim){
   AIK.forEach(k=>tl[k].total=tl[k].acc+tl[k].nov);drawLB(dim,document.getElementById("alb"),tl,true);
 }
 
+function toggleUploadPanel(){
+  const panel=document.getElementById("uploadPanel");
+  const icon=document.getElementById("uploadToggleIcon");
+  const open=panel.style.display==="none";
+  panel.style.display=open?"block":"none";
+  icon.textContent=open?"▾ collapse":"▸ expand";
+}
 function readFile(){const f=document.getElementById("ufile").files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{document.getElementById("ujson").value=ev.target.result;};r.readAsText(f,"utf-8");}
 async function uploadMat(){
   const raw=document.getElementById("ujson").value.trim();if(!raw){setUmsg("请粘贴 JSON 或选择文件","err");return;}
@@ -835,7 +870,17 @@ async function uploadMat(){
     if(!Array.isArray(p))throw new Error("应为 JSON 数组格式");
     setUmsg("上传中...","info");
     const ok=await gsCall("setData",{data:p});
-    if(ok!==null){DATA=p;localStorage.setItem("ev_data_cache",JSON.stringify(p));setUmsg(`✓ Upload successful, ${p.length} items`,"ok");upOverview();document.getElementById("ndw").style.display=DATA.length?"none":"block";}
+    if(ok!==null){
+      DATA=p;
+      localStorage.setItem("ev_data_cache",JSON.stringify(p));
+      setUmsg(`✓ Uploaded successfully — ${p.length} items saved to Google Sheets permanently`,"ok");
+      upOverview();
+      document.getElementById("ndw").style.display="none";
+      // Collapse upload panel — no need to upload again
+      const panel=document.getElementById("uploadPanel");
+      const icon=document.getElementById("uploadToggleIcon");
+      if(panel){setTimeout(()=>{panel.style.display="none";if(icon)icon.textContent="▸ expand";},2000);}
+    }
     else setUmsg("❌ 上传失败，请检查 scriptUrl 是否正确","err");
   }catch(ex){setUmsg("❌ "+ex.message,"err");}
 }
