@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -498,9 +497,10 @@ async function init(){
   ld(DATA.length?"正在更新材料...":"正在加载材料...");
   try{
     const d=await gsCall("getData",{});
-    if(d&&Array.isArray(d)&&d.length){
-      DATA=d;
-      localStorage.setItem("ev_data_cache",JSON.stringify(d));
+    const arr=d&&Array.isArray(d)?d:(d&&Array.isArray(d&&d.data)?d.data:null);
+    if(arr&&arr.length){
+      DATA=arr;
+      localStorage.setItem("ev_data_cache",JSON.stringify(arr));
     }
   }catch(ex){console.warn("Could not fetch fresh data, using cache",ex);}
   hideLd();
@@ -699,10 +699,11 @@ async function connect(){
   setCmsg("连接中...","info");
   try{
     const test=await gsCall("getResults",{});
-    if(test===null)throw new Error("连接失败，请检查 scriptUrl 是否正确，以及脚本是否已部署为 Anyone 可访问");
-    cloud=test||{};
+    if(test===null)throw new Error("Connection failed — check scriptUrl is correct and deployed as Anyone");
+    cloud=(test&&test.data!==undefined?test.data:test)||{};
     const rd=await gsCall("getData",{});
-    if(rd&&Array.isArray(rd)&&rd.length){DATA=rd;document.getElementById("ndw").style.display="none";}
+    const rdarr=rd&&Array.isArray(rd)?rd:(rd&&Array.isArray(rd&&rd.data)?rd.data:null);
+    if(rdarr&&rdarr.length){DATA=rdarr;localStorage.setItem("ev_data_cache",JSON.stringify(rdarr));document.getElementById("ndw").style.display="none";}
     setCmsg("✓ 登录成功","ok");
     document.getElementById("aLogin").style.display="none";
     document.getElementById("aDash").style.display="block";
@@ -718,7 +719,7 @@ async function refreshAll(){
   ld("刷新数据...");
   try{
     const r=await gsCall("getResults",{});
-    cloud=r||{};
+    cloud=(r&&r.data!==undefined?r.data:r)||{};
     upOverview();drawALB(ALB);upRDetail();
   }catch(ex){toast("刷新失败: "+ex.message);}
   hideLd();
@@ -781,8 +782,8 @@ async function deleteJudge(jname){
   ld("保存中...");
   const ok=await gsCall("setResults",{results:cloud});
   hideLd();
-  if(ok!==null){toast(`已删除 ${jname} 的全部记录`);upOverview();drawALB(ALB);upRDetail();}
-  else toast("❌ 删除失败");
+  if(ok&&ok.ok){toast(`Deleted all records for ${jname}`);upOverview();drawALB(ALB);upRDetail();}
+  else toast("❌ Delete failed");
 }
 
 // Delete single record from a judge
@@ -799,8 +800,8 @@ async function deleteRecord(jname,msgId){
   ld("保存中...");
   const ok=await gsCall("setResults",{results:cloud});
   hideLd();
-  if(ok!==null){toast("已删除该记录");upRDetail();upOverview();}
-  else toast("❌ 删除失败");
+  if(ok&&ok.ok){toast("Record deleted");upRDetail();upOverview();}
+  else toast("❌ Delete failed");
 }
 
 function upRDetail(){
@@ -870,7 +871,7 @@ async function uploadMat(){
     if(!Array.isArray(p))throw new Error("应为 JSON 数组格式");
     setUmsg("上传中...","info");
     const ok=await gsCall("setData",{data:p});
-    if(ok!==null){
+    if(ok&&ok.ok){
       DATA=p;
       localStorage.setItem("ev_data_cache",JSON.stringify(p));
       setUmsg(`✓ Uploaded successfully — ${p.length} items saved to Google Sheets permanently`,"ok");
@@ -905,7 +906,7 @@ async function clearAllRes(){
   ld("保存中...");
   const ok=await gsCall("setResults",{results:{}});
   hideLd();
-  if(ok!==null){cloud={};toast("已清空全部结果");refreshAll();}else toast("❌ 操作失败");
+  if(ok&&ok.ok){cloud={};toast("All results cleared");refreshAll();}else toast("❌ Failed");
 }
 
 // ══════════════════════════════════════════════════
