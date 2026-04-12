@@ -370,7 +370,7 @@ html,body{min-height:100%;height:100%;background:var(--bg);color:var(--tx);font-
             <input type="text" id="gurlDisp" readonly style="color:var(--ac);cursor:text"/>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn bg bsm" onclick="copyGid()">复制 Gist ID</button>
+            <button class="btn bg bsm" onclick="copyGid()">复制 Script URL</button>
             <button class="btn bg bsm" onclick="window.open(document.getElementById('gurlDisp').value,'_blank')">在 GitHub 查看 →</button>
           </div>
         </div>
@@ -391,17 +391,14 @@ html,body{min-height:100%;height:100%;background:var(--bg);color:var(--tx);font-
 
 <script>
 // ══════════════════════════════════════════════════
-// ★ CONFIG — ONLY YOU EDIT THIS BLOCK BEFORE DEPLOY
+// ★ CONFIG — deploy 前只改这两项
 // ══════════════════════════════════════════════════
 const CFG={
-  adminPwd:  "CGT",       // ★ 改成你的管理员密码
-  gistToken: "YOUR_TOKEN_HERE", // ★ 填入 GitHub Token (ghp_xxx...) — 只有你能看到此文件源码
-  gistId:    "7253ae639b76f336e246115939683a4f",    // ★ 填入 Gist ID（第一次运行后从 GitHub 复制）
-  gistData:    "eval_data.json",
-  gistResults: "eval_results.json",
+  adminPwd:  "CGT",              // ★ 改成你的管理员密码
+  scriptUrl: "https://script.google.com/macros/s/AKfycbzHY2plknIEE79WhoPl4YI79LhPagxrH9IFPJ1rTLSvSnl_YWC50vYvGKh8jdxS7Gwp/exec",   // ★ 填入 Google Apps Script 网址
 };
-// 评审员打开网页时完全看不到 token/gistId，它们只存在于此处源码中。
-// 朋友只需打开网址、输入姓名，即可直接开始评审。
+// 数据存在 Google Sheet 里，脚本网址是公开的，不包含任何密钥。
+// 朋友打开网址输入姓名即可直接开始，无需任何其他操作。
 const AIK=["A","B","C","D","E","F","G","H"];
 const RK=["Deepseek","Doubao","Gemini","GPT","llama","Qwen","THUDM","ZAI-GLM"];
 const COL={};AIK.forEach((k,i)=>COL[k]=RK[i]+"_code1");
@@ -411,9 +408,6 @@ const FRE=/提取失败|待细化|待确认|数据缺失|未分类|文本主旨/
 // STATE
 // ══════════════════════════════════════════════════
 let DATA=[],judge="",idx=0,local={},cloud={},AP={},NP={},ALB="acc",RT="acc";
-// tok and gid are always taken from CFG — never entered by users
-const tok=CFG.gistToken;
-const gid=CFG.gistId;
 let modalCb=null;
 
 // ══════════════════════════════════════════════════
@@ -461,23 +455,26 @@ function nav(targetId){
 // INIT
 // ══════════════════════════════════════════════════
 async function init(){
-  const cfgOk=tok&&tok!=="YOUR_TOKEN_HERE"&&gid&&gid!=="YOUR_GIST_ID";
+  const cfgOk=CFG.scriptUrl&&!CFG.scriptUrl.includes("YOUR_APPS");
   if(!cfgOk){
     hideLd();
     document.getElementById("ndw").innerHTML=
       "<strong>⚙️ 网站尚未配置</strong> — 管理员请完成以下步骤（仅需一次）：<br><br>"+
-      "① 前往 GitHub 生成 Personal Access Token，勾选 <code>gist</code> 权限<br>"+
-      "② 在 GitHub 新建一个 Secret Gist，复制其 ID（URL 中最后一段）<br>"+
-      "③ 用编辑器打开此 HTML 文件，在 <code>CFG</code> 块填入 <code>gistToken</code> 和 <code>gistId</code><br>"+
-      "④ 重新上传到 GitHub Pages，再通过管理员后台上传评审材料<br><br>"+
-      "配置完成后，你的朋友打开网址输入姓名即可直接开始评审，无需任何其他设置。";
+      "① 前往 Google Sheets 创建新表格<br>"+
+      "② 点击扩展程序 → Apps Script，粘贴 script.gs 内容并部署为网页应用<br>"+
+      "③ 复制部署后的网址，填入此 HTML 文件的 <code>CFG.scriptUrl</code><br>"+
+      "④ 重新上传到 GitHub Pages，然后进入管理员后台上传评审材料<br><br>"+
+      "配置完成后，你的朋友打开网址输入姓名即可直接开始评审。";
     document.getElementById("ndw").style.display="block";
     const startBtn=document.querySelector("#pSetup .bp");
     if(startBtn){startBtn.disabled=true;startBtn.style.opacity="0.3";}
     return;
   }
   ld("正在加载材料...");
-  try{const r=await gFetch(gid,CFG.gistData,tok);if(r){const d=JSON.parse(r);if(d&&d.length)DATA=d;}}catch(ex){}
+  try{
+    const d=await gsCall("getData",{});
+    if(d&&Array.isArray(d)&&d.length)DATA=d;
+  }catch(ex){}
   hideLd();
   if(!DATA.length){document.getElementById("ndw").textContent="⚠ 管理员尚未上传评审材料，请联系管理员后再开始。";document.getElementById("ndw").style.display="block";}
 }
@@ -579,12 +576,25 @@ function exportMyCSV(){
 }
 
 // ══════════════════════════════════════════════════
-// CLOUD
+// CLOUD — Google Apps Script
 // ══════════════════════════════════════════════════
-async function gFetch(id,fn,tk){const h={Accept:"application/vnd.github+json"};if(tk)h["Authorization"]="token "+tk;const r=await fetch(`https://api.github.com/gists/${id}`,{headers:h});if(!r.ok)return null;const g=await r.json();const f=g.files[fn];if(!f)return null;if(f.truncated){const r2=await fetch(f.raw_url);return r2.text();}return f.content;}
-async function gPatch(fn,content){const r=await fetch(`https://api.github.com/gists/${gid}`,{method:"PATCH",headers:{Authorization:"token "+tok,"Content-Type":"application/json"},body:JSON.stringify({files:{[fn]:{content}}})});return r.ok;}
-async function gCreate(){const r=await fetch("https://api.github.com/gists",{method:"POST",headers:{Authorization:"token "+tok,"Content-Type":"application/json"},body:JSON.stringify({description:"AI Eval Data & Results",public:false,files:{[CFG.gistData]:{content:"[]"},[CFG.gistResults]:{content:"{}"}}})});if(!r.ok)return null;return(await r.json()).id;}
-async function pushCloud(){if(!gid||!tok)return;try{const r=await gFetch(gid,CFG.gistResults,tok);const all=JSON.parse(r||"{}");all[judge]=local;await gPatch(CFG.gistResults,JSON.stringify(all,null,2));}catch(ex){console.warn("push failed",ex);}}
+async function gsCall(action, payload){
+  const url=CFG.scriptUrl+"?action="+action;
+  const r=await fetch(url,{
+    method:"POST",
+    headers:{"Content-Type":"text/plain"},
+    body:JSON.stringify(payload)
+  });
+  if(!r.ok)return null;
+  const j=await r.json();
+  return j.data!==undefined?j.data:j;
+}
+async function pushCloud(){
+  if(!CFG.scriptUrl||CFG.scriptUrl.includes("YOUR_APPS"))return;
+  try{
+    await gsCall("saveResults",{judge,scores:local});
+  }catch(ex){console.warn("push failed",ex);}
+}
 
 // ══════════════════════════════════════════════════
 // ADMIN
@@ -594,22 +604,22 @@ function goAdmin(ev){ev.preventDefault();nav("pAdmin");}
 async function connect(){
   const pw=document.getElementById("aPass").value;
   if(pw!==CFG.adminPwd){setCmsg("密码错误","err");return;}
-  if(!tok||tok==="YOUR_TOKEN_HERE"||!gid||gid==="YOUR_GIST_ID"){
-    setCmsg("❌ 请先在 HTML 源文件的 CFG 块中填写 gistToken 和 gistId，然后重新上传","err");return;
+  if(!CFG.scriptUrl||CFG.scriptUrl.includes("YOUR_APPS")){
+    setCmsg("❌ 请先在 CFG.scriptUrl 填入 Apps Script 网址，重新上传后再试","err");return;
   }
-  setCmsg("验证中...","info");
+  setCmsg("连接中...","info");
   try{
-    const test=await gFetch(gid,CFG.gistResults,tok);
-    if(test===null)throw new Error("Gist 连接失败，请检查 CFG 中的 gistToken 和 gistId 是否正确");
-    cloud=JSON.parse(test||"{}");
-    const rd=await gFetch(gid,CFG.gistData,tok);
-    if(rd)try{const d=JSON.parse(rd);if(d&&d.length){DATA=d;document.getElementById("ndw").style.display="none";}}catch(ex){}
+    const test=await gsCall("getResults",{});
+    if(test===null)throw new Error("连接失败，请检查 scriptUrl 是否正确，以及脚本是否已部署为 Anyone 可访问");
+    cloud=test||{};
+    const rd=await gsCall("getData",{});
+    if(rd&&Array.isArray(rd)&&rd.length){DATA=rd;document.getElementById("ndw").style.display="none";}
     setCmsg("✓ 登录成功","ok");
     document.getElementById("aLogin").style.display="none";
     document.getElementById("aDash").style.display="block";
     document.getElementById("anav").style.display="flex";
-    document.getElementById("gidDisp").value=gid;
-    document.getElementById("gurlDisp").value="https://gist.github.com/"+gid;
+    document.getElementById("gidDisp").value=CFG.scriptUrl.slice(0,40)+"...";
+    document.getElementById("gurlDisp").value=CFG.scriptUrl;
     refreshAll();
   }catch(ex){setCmsg("❌ "+ex.message,"err");}
 }
@@ -617,8 +627,11 @@ function setCmsg(m,t){const el=document.getElementById("cmsg");el.textContent=m;
 
 async function refreshAll(){
   ld("刷新数据...");
-  try{const r=await gFetch(gid,CFG.gistResults,tok);cloud=JSON.parse(r||"{}");upOverview();drawALB(ALB);upRDetail();}
-  catch(ex){toast("刷新失败: "+ex.message);}
+  try{
+    const r=await gsCall("getResults",{});
+    cloud=r||{};
+    upOverview();drawALB(ALB);upRDetail();
+  }catch(ex){toast("刷新失败: "+ex.message);}
   hideLd();
 }
 
@@ -661,9 +674,9 @@ function confirmDeleteJudge(jname){
 async function deleteJudge(jname){
   delete cloud[jname];
   ld("保存中...");
-  const ok=await gPatch(CFG.gistResults,JSON.stringify(cloud,null,2));
+  const ok=await gsCall("setResults",{results:cloud});
   hideLd();
-  if(ok){toast(`已删除 ${jname} 的全部记录`);upOverview();drawALB(ALB);upRDetail();}
+  if(ok!==null){toast(`已删除 ${jname} 的全部记录`);upOverview();drawALB(ALB);upRDetail();}
   else toast("❌ 删除失败");
 }
 
@@ -679,9 +692,9 @@ async function deleteRecord(jname,msgId){
   if(!cloud[jname])return;
   delete cloud[jname][msgId];
   ld("保存中...");
-  const ok=await gPatch(CFG.gistResults,JSON.stringify(cloud,null,2));
+  const ok=await gsCall("setResults",{results:cloud});
   hideLd();
-  if(ok){toast("已删除该记录");upRDetail();upOverview();}
+  if(ok!==null){toast("已删除该记录");upRDetail();upOverview();}
   else toast("❌ 删除失败");
 }
 
@@ -740,7 +753,14 @@ function drawALB(dim){
 function readFile(){const f=document.getElementById("ufile").files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{document.getElementById("ujson").value=ev.target.result;};r.readAsText(f,"utf-8");}
 async function uploadMat(){
   const raw=document.getElementById("ujson").value.trim();if(!raw){setUmsg("请粘贴 JSON 或选择文件","err");return;}
-  try{const p=JSON.parse(raw);if(!Array.isArray(p))throw new Error("应为 JSON 数组格式");setUmsg("上传中...","info");const ok=await gPatch(CFG.gistData,JSON.stringify(p,null,2));if(ok){DATA=p;setUmsg(`✓ 上传成功，共 ${p.length} 条`,"ok");upOverview();document.getElementById("ndw").style.display=DATA.length?"none":"block";}else setUmsg("❌ 上传失败，请检查 Token 权限","err");}catch(ex){setUmsg("❌ "+ex.message,"err");}
+  try{
+    const p=JSON.parse(raw);
+    if(!Array.isArray(p))throw new Error("应为 JSON 数组格式");
+    setUmsg("上传中...","info");
+    const ok=await gsCall("setData",{data:p});
+    if(ok!==null){DATA=p;setUmsg(`✓ 上传成功，共 ${p.length} 条`,"ok");upOverview();document.getElementById("ndw").style.display=DATA.length?"none":"block";}
+    else setUmsg("❌ 上传失败，请检查 scriptUrl 是否正确","err");
+  }catch(ex){setUmsg("❌ "+ex.message,"err");}
 }
 function setUmsg(m,t){const el=document.getElementById("umsg");el.textContent=m;el.className="smsg "+t;}
 function clearUp(){document.getElementById("ujson").value="";document.getElementById("ufile").value="";document.getElementById("umsg").className="smsg";}
@@ -759,7 +779,12 @@ function dlAllCSV(){
 function dlRawJSON(){const b=new Blob([JSON.stringify(cloud,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=`eval_raw_${td()}.json`;a.click();}
 function copyGid(){navigator.clipboard.writeText(gid).then(()=>toast("Gist ID 已复制！")).catch(()=>toast(gid));}
 function confirmClearAll(){openModal("清空全部结果","将永久删除所有评审员的全部评审记录。此操作不可撤销。",clearAllRes);}
-async function clearAllRes(){ld("保存中...");const ok=await gPatch(CFG.gistResults,"{}");hideLd();if(ok){cloud={};toast("已清空全部结果");refreshAll();}else toast("❌ 操作失败");}
+async function clearAllRes(){
+  ld("保存中...");
+  const ok=await gsCall("setResults",{results:{}});
+  hideLd();
+  if(ok!==null){cloud={};toast("已清空全部结果");refreshAll();}else toast("❌ 操作失败");
+}
 
 // ══════════════════════════════════════════════════
 // MODAL
